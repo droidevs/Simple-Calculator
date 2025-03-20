@@ -1,6 +1,6 @@
-package io.droidevs.components
+package io.droidevs.calculatorplus.components
 
-abstract class Constant(text : String) : Component(text = text) {
+abstract class Constant(text : String) : io.droidevs.calculatorplus.components.Component(text = text) {
 
     abstract fun apply() : Double
 

@@ -1,6 +1,6 @@
-package io.droidevs.components
+package io.droidevs.calculatorplus.components
 
-open class Digit(text: String) : Component(text) {
+open class Digit(text: String) : io.droidevs.calculatorplus.components.Component(text) {
 
     object Zero : Digit("0")
 
