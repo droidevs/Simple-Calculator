@@ -1,4 +1,4 @@
-package io.droidevs.simplecalculator
+package io.droidevs.calculatorplus
 
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4

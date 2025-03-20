@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "io.droidevs.simplecalculator"
+    namespace = "io.droidevs.calculatorplus"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "io.droidevs.simplecalculator"
+        applicationId = "io.droidevs.calculatorplus"
         minSdk = 21
         targetSdk = 34
         versionCode = 1
@@ -66,4 +66,6 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
+
+    implementation (libs.androidx.lifecycle.viewmodel.compose)
 }

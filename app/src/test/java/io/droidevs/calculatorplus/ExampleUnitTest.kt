@@ -1,4 +1,4 @@
-package io.droidevs.simplecalculator
+package io.droidevs.calculatorplus
 
 import org.junit.Test
 
