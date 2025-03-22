@@ -2,10 +2,6 @@ package io.droidevs.calculatorplus.token
 
 import androidx.annotation.CallSuper
 import io.droidevs.calculatorplus.components.Component
-import io.droidevs.calcus.domain.model.token.FunctionToken
-import io.droidevs.calcus.domain.model.token.OperatorToken
-import io.droidevs.calcus.domain.model.token.ParenthesisToken
-import io.droidevs.calcus.domain.model.token.SpecialToken
 import io.droidevs.calculatorplus.validation.ValidationArgument
 import io.droidevs.calculatorplus.validation.ValidationResult
 
@@ -46,7 +42,7 @@ open class LinkedToken(var component: Component) {
     /**
      * A reference to the next token in the linked structure.
      */
-    private var next: LinkedToken? = null
+    var next: LinkedToken? = null
 
     /**
      * A reference to the previous token in the linked structure.

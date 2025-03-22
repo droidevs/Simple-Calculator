@@ -1,5 +1,6 @@
 package io.droidevs.calculatorplus.token
 
+import androidx.compose.runtime.currentComposer
 import io.droidevs.calculatorplus.components.ClcFunction
 import io.droidevs.calculatorplus.components.Component
 import io.droidevs.calculatorplus.components.Digit
@@ -21,10 +22,10 @@ open class OperatorToken(operator: Operator) : LinkedToken(operator) {
 
 
     override fun isValid(argument: ValidationArgument): Boolean {
-        return super.isValid(argument)
+        return validateOperator(argument.prev, argument.current as Operator)
     }
 
-    fun validateOperator(prev: Component?, operator: Operator): Boolean {
+    private fun validateOperator(prev: Component?, operator: Operator): Boolean {
         // Rule: If the operator is at the start of the expression
         if (prev == null) {
             return when (operator) {
