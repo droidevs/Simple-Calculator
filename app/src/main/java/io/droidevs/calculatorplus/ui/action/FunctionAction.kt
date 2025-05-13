@@ -43,4 +43,6 @@ abstract class FunctionAction(text: String) : Action(text) {
 
     object PowerE : FunctionAction("exp")
 
+    object OneDevideX : FunctionAction("1/x")
+
 }
