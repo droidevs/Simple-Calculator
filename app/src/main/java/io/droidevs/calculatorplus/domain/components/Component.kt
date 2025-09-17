@@ -1,6 +1,5 @@
-package io.droidevs.calculatorplus.components
+package io.droidevs.calculatorplus.domain.components
 
-import io.droidevs.calcus.domain.model.protocol.format.Format
 
 open class Component(val text : String) {
 
@@ -41,32 +40,6 @@ open class Component(val text : String) {
                     return if (isOpenParenthesis(it)) Parenthesis.OpenParenthesis else Parenthesis.CloseParenthesis
                 if (isDecimalPoint(it))
                     return Special.Decimal
-                if (isSin(it))
-                    return ClcFunction.Sin
-                if (isCos(it))
-                    return ClcFunction.Cos
-                if (isTan(it))
-                    return ClcFunction.Tan
-                if (isACos(it))
-                    return ClcFunction.ACos
-                if (isASin(it))
-                    return ClcFunction.ASin
-                if (isATan(it))
-                    return ClcFunction.ATan
-                if (isCosH(it))
-                    return ClcFunction.CosH
-                if (isSinH(it))
-                    return ClcFunction.SinH
-                if (isTanH(it))
-                    return ClcFunction.TanH
-                if (isACosH(it))
-                    return ClcFunction.ACosH
-                if (isASinH(it))
-                    return ClcFunction.ASinH
-                if (isATanH(it))
-                    return ClcFunction.ATanH
-                if (isLog(it))
-                    return ClcFunction.Log
                 if (isExp(it))
                     return Constant.E
                 if (isPi(it))
@@ -75,6 +48,10 @@ open class Component(val text : String) {
 
                 return Special.Unknown
             }
+        }
+
+        private fun isExp(it: Char): Boolean {
+             return it.isExp()
         }
 
         public fun isPi(char: Char): Boolean {
@@ -159,85 +136,6 @@ open class Component(val text : String) {
 
         fun isFactorial(char: Char): Boolean {
             return char.isFactorial()
-        }
-
-        /**
-         * Checks if the given character is a valid character for scientific functions (e.g., sin, cos, log).
-         *
-         * @param char The character to check.
-         * @return True if the character is valid for scientific functions, false otherwise.
-         */
-        fun isFunction(char: Char): Boolean {
-            /*
-        char.let {
-            return isSin(it)
-                    && isCos(it)
-                    && isSin(it)
-                    && isTan(it)
-                    && isACos(it)
-                    && isASin(it)
-                    && isATan(it)
-                    && isACosH(it)
-                    && isASinH(it)
-                    && isATanH(it)
-        }*/
-            return char.isFunction()
-        }
-
-        fun isSin(char: Char): Boolean {
-            return char.isSin()
-        }
-
-        fun isCos(char: Char): Boolean {
-            return char.isCos()
-        }
-
-        fun isTan(char: Char): Boolean {
-            return char.isATan()
-        }
-
-        fun isACos(char: Char): Boolean {
-            return char.isACos()
-        }
-
-        fun isASin(char: Char): Boolean {
-            return char.isASin()
-        }
-
-        fun isATan(char: Char): Boolean {
-            return char.isATan()
-        }
-
-        fun isCosH(char: Char): Boolean {
-            return char.isCosH()
-        }
-
-        fun isSinH(char: Char): Boolean {
-            return char.isSinH()
-        }
-
-        fun isTanH(char: Char): Boolean {
-            return char.isTanH()
-        }
-
-        fun isACosH(char: Char): Boolean {
-            return char.isACosH()
-        }
-
-        fun isASinH(char: Char): Boolean {
-            return char.isASinH()
-        }
-
-        fun isATanH(char: Char): Boolean {
-            return char.isATanH()
-        }
-
-        fun isExp(char: Char): Boolean {
-            return char.isExp()
-        }
-
-        fun isLog(char: Char): Boolean {
-            return char.isLog()
         }
 
 
@@ -377,77 +275,11 @@ private fun Char.isDecimalPoint(): Boolean {
     return this == '.'
 }
 
-/**
- * Extension function to check if a character is part of a scientific function.
- * Scientific functions can include 's', 'i', 'n', 'c', 'o', 'l', 'g', 't', etc.,
- * which are parts of functions like sin, cos, log, tan.
- */
-private fun Char.isFunction(): Boolean {
-    return isSin() ||
-            isCos() ||
-            isSin() ||
-            isTan() ||
-            isACos() ||
-            isASin() ||
-            isATan() ||
-            isACosH() ||
-            isASinH() ||
-            isATanH() ||
-            isLog() ||
-            isExp()
-}
 
 
 
-private fun Char.isSin() : Boolean {
-    return this.toString() == Format.SIN
-}
-
-private fun Char.isCos() : Boolean {
-    return this.toString() == Format.COS
-}
-
-private fun Char.isTan() : Boolean {
-    return this.toString() == Format.TAN
-}
-
-private fun Char.isLog() : Boolean {
-    return this.toString() == Format.LOG
-}
-
-private fun Char.isACos() : Boolean {
-    return this.toString() == Format.ACOS
-}
-
-private fun Char.isASin() : Boolean {
-    return this.toString() == Format.ASIN
-}
-
-private fun Char.isATan() : Boolean {
-    return this.toString() == Format.ATAN
-}
-
-private fun Char.isCosH() : Boolean {
-    return this.toString() == Format.COSH
-}
-
-private fun Char.isSinH() : Boolean {
-    return this.toString() == Format.SINH
-}
-
-private fun Char.isTanH() : Boolean {
-    return this.toString() == Format.TANH
-}
-private fun Char.isACosH() : Boolean {
-    return this.toString() == Format.ACOSH
-}
-
-private fun Char.isASinH() : Boolean {
-    return this.toString() == Format.ASINH
-}
-
-private fun Char.isATanH() : Boolean {
-    return this.toString() == Format.ATANH
+private fun Char.isLetter() : Boolean {
+    return this in listOf('a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z')
 }
 
 private fun Char.isExp() : Boolean {

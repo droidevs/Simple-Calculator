@@ -11,7 +11,6 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
-import io.droidevs.wallpaper.ui.theme.AppTypography
 import io.droidevs.wallpaper.ui.theme.md_theme_dark_background
 import io.droidevs.wallpaper.ui.theme.md_theme_dark_error
 import io.droidevs.wallpaper.ui.theme.md_theme_dark_errorContainer

@@ -154,3 +154,116 @@ fun LinkedToken.isSpecial(): Boolean = this is SpecialToken
 
 fun LinkedToken.isEToken() : Boolean = this is SpecialToken.EToken
 
+/**
+ * Counts the number of tokens in the chain that match the given [predicate].
+ *
+ * @param predicate A function that returns true for tokens to be counted.
+ * @return The number of matching tokens in the chain.
+ */
+fun LinkedToken.count(predicate: (LinkedToken) -> Boolean): Int {
+    var current: LinkedToken? = this
+    var count = 0
+    while (current != null && current.isNotEmpty()) {
+        if (predicate(current)) {
+            count++
+        }
+        current = current.next
+    }
+    return count
+}
+
+/**
+ * Find the token that starts at the given `startIndex`.
+ */
+fun LinkedToken.getTokenAt(startIndex: Int): LinkedToken? {
+    var current: LinkedToken? = this
+    while (current != null && current.isNotEmpty()) {
+        if (current.startIndex == startIndex) return current
+        current = current.next
+    }
+    return null
+}
+
+/**
+ * Insert a new token at a specific absolute `startIndex`.
+ */
+fun LinkedToken.insertAt(startIndex: Int, newToken: LinkedToken): LinkedToken {
+    // If inserting before the very first token
+    if (startIndex <= this.startIndex) {
+        newToken.next = this
+        this.prev = newToken
+        return newToken
+    }
+
+    // Walk until we find the token that starts after our desired index
+    var current: LinkedToken? = this
+    while (current != null && current.isNotEmpty()) {
+        if (current.startIndex >= startIndex) {
+            val prevToken = current.prev
+            prevToken.next = newToken
+            newToken.prev = prevToken
+            newToken.next = current
+            current.prev = newToken
+            return this
+        }
+        current = current.next
+    }
+
+    // If we reach the end → append
+    var tail: LinkedToken = this
+    while (tail.next.isNotEmpty()) {
+        tail = tail.next
+    }
+    tail.next = newToken
+    newToken.prev = tail
+    return this
+}
+
+/**
+ * Replace the token that starts at [pos] with [newToken].
+ * If no token starts exactly at [pos], nothing happens.
+ */
+fun LinkedToken.replaceAt(pos: Int, newToken: LinkedToken): LinkedToken {
+    var current: LinkedToken? = this
+    while (current != null && current.isNotEmpty()) {
+        if (current.startIndex == pos) {
+            current.replaceWith(newToken)
+            // return head
+            return if (this.prev == null) this else {
+                var head = this
+                while (head.prev != null) head = head.prev!!
+                head
+            }
+        }
+        current = current.next
+    }
+    return this
+}
+
+/**
+ * Replace this token with [newToken].
+ */
+fun LinkedToken.replaceWith(newToken: LinkedToken) {
+    val prevToken = this.prev
+    val nextToken = this.next
+
+    newToken.prev = prevToken
+    newToken.next = nextToken
+
+    prevToken?.next = newToken
+    nextToken?.prev = newToken
+}
+
+
+/**
+ * Find the first token in the linked list that matches the [predicate].
+ */
+inline fun LinkedToken.find(predicate: (LinkedToken) -> Boolean): LinkedToken? {
+    var current: LinkedToken? = this
+    while (current != null && current.isNotEmpty()) {
+        if (predicate(current)) return current
+        current = current.next
+    }
+    return null
+}
+
