@@ -6,19 +6,21 @@ import android.text.Spanned
 import android.text.style.ForegroundColorSpan
 import io.droidevs.calculatorplus.domain.components.Special
 import io.droidevs.calculatorplus.domain.token.LinkedToken
+import io.droidevs.calculatorplus.domain.token.isNotEmpty
+import io.droidevs.calculatorplus.domain.token.isNotEmpty
 
 
 class ExpressionDisplayFormatter {
 
-    fun format(token: LinkedToken): CharSequence {
+    fun format(token: LinkedToken): Pair<CharSequence, CharSequence>  {
         var expression = ""
-        var current : LinkedToken? = token
-        while(current != null){
-            expression+= current.component.text
+        var current: LinkedToken? = token
+        while (current != null && current.isNotEmpty()) {
+            expression += current.component.text
             current = current.next
         }
-        val formated = formatNumbers(expression)
-        return highlightSpecialSymbols(formated)
+        val formatted = formatNumbers(expression)
+        return (expression to highlightSpecialSymbols(formatted))
     }
 
     fun highlightSpecialSymbols(text: CharSequence) : CharSequence {
@@ -81,4 +83,19 @@ class ExpressionDisplayFormatter {
             .reversed()                             // reversed      : 00,110
     }
 
+    /**
+     * Convert cursor position from raw string to formatted string.
+     */
+    fun cursorRawToFormatted(raw: String, formatted: String, rawCursor: Int): Int {
+        var rawIndex = 0
+        var fIndex = 0
+
+        while (rawIndex < rawCursor && rawIndex < raw.length && fIndex < formatted.length) {
+            if (raw[rawIndex] == formatted[fIndex]) {
+                rawIndex++
+            }
+            fIndex++
+        }
+        return fIndex
+    }
 }

@@ -12,7 +12,8 @@ import io.droidevs.calculatorplus.domain.token.LinkedToken
 import io.droidevs.calculatorplus.domain.token.OperatorToken
 import io.droidevs.calculatorplus.domain.token.ParenthesisToken
 import io.droidevs.calculatorplus.domain.token.count
-import io.droidevs.calculatorplus.domain.token.getTokenAt
+import io.droidevs.calculatorplus.domain.token.find
+import io.droidevs.calculatorplus.domain.token.headToken
 import io.droidevs.calculatorplus.domain.token.insertAt
 import io.droidevs.calculatorplus.domain.token.isCloseParenthesis
 import io.droidevs.calculatorplus.domain.token.isDigit
@@ -26,14 +27,42 @@ class ParenthesesUseCase(
 ) {
 
     fun invoke(calculation: Calculation,pos: Int): Calculation {
-        val formatted = tokenizerFormatter.format(calculation.expression)
-        val result = doInput(formatted, pos)
+        val currentTokens = calculation.tokens.headToken()
+
+        val currentPair = displayFormatter.format(currentTokens)
+        val rawNow = currentPair.first.toString()
+        val formattedNow = currentPair.second.toString()
+        val rawPos = tokenizerFormatter.cursorFormattedToRaw(formattedNow, rawNow, calculation.pos)
+
+        val result = doInput(currentTokens, rawPos)
         result.fold(
-            onSuccess = { result ->
-                val bigDecimalResult = evaluator.evaluate(result)
-                return Calculation(
-                    expression = displayFormatter.format(result).toString(),
-                    result = bigDecimalResult
+            onSuccess = { resultPair ->
+                val adjustedPos = resultPair.first
+                val resultLinkedToken = resultPair.second
+
+                val expPair = displayFormatter.format(resultLinkedToken)
+                val rawExp = expPair.first.toString()
+                val formattedExp = expPair.second.toString()
+
+                val eval = evaluator.evaluate(resultLinkedToken)
+                return eval.fold(
+                    onSuccess = { value ->
+                        Calculation(
+                            tokens = resultLinkedToken.headToken(),
+                            expression = formattedExp,
+                            pos = displayFormatter.cursorRawToFormatted(rawExp, formattedExp, adjustedPos),
+                            result = value,
+                            error = null
+                        )
+                    },
+                    onFailure = { error ->
+                        calculation.copy(
+                            tokens = resultLinkedToken.headToken(),
+                            expression = formattedExp,
+                            pos = displayFormatter.cursorRawToFormatted(rawExp, formattedExp, adjustedPos),
+                            error = error
+                        )
+                    }
                 )
             },
             onFailure = { error ->
@@ -45,32 +74,35 @@ class ParenthesesUseCase(
     private fun doInput(
         expression: LinkedToken,
         pos: Int
-    ): Result<LinkedToken> {
+    ): Result<Pair<Int,LinkedToken>> {
         // Count open/close parentheses in the chain
         val openCount = expression.count { it.isOpenParenthesis() }
         val closeCount = expression.count { it.isCloseParenthesis() }
 
-        // Get the token before `pos`
-        val prevToken = expression.getTokenAt(pos - 1)
+        val head = expression.headToken()
+
+        // Get the token immediately before `pos`
+        val prevToken = head.find { it.endIndex == pos - 1 }
 
         // If we're at the start or after an operator/open parenthesis → insert opening parenthesis
-        if (pos == 0 || prevToken?.let { it.isOperator() || it.isOpenParenthesis() } == true) {
-            return Result.Success(expression.insertAt(pos, ParenthesisToken.OpenParenthesisToken()))
+        if (pos == 0 || prevToken?.let { it.isOperator() || it.isOpenParenthesis() } != false) {
+            val out = head.insertAt(pos, ParenthesisToken.OpenParenthesisToken())
+            return Result.Success(pos + 1 to out)
         }
 
         // If we're after a digit or closing parenthesis → insert closing parenthesis (only if we have unmatched opens)
-        if (prevToken?.let { it.isDigit() || it.isCloseParenthesis() } == true) {
+        if (prevToken != null && (prevToken.isDigit() || prevToken.isCloseParenthesis())) {
             if (openCount > closeCount) {
-                return Result.Success(expression.insertAt(pos, ParenthesisToken.CloseParenthesisToken()))
+                val out = head.insertAt(pos, ParenthesisToken.CloseParenthesisToken())
+                return Result.Success(pos + 1 to out)
             }
         }
 
-        // Case 3: default → insert "*" + "("
-        val mulToken = OperatorToken.MultiplyToken()
-        expression.insertAt(pos, mulToken)
-        expression.insertAt(pos + 1, ParenthesisToken.OpenParenthesisToken())
+        // Default → insert "*" + "("
+        var out = head.insertAt(pos, OperatorToken.MultiplyToken())
+        out = out.insertAt(pos + 1, ParenthesisToken.OpenParenthesisToken())
 
-        return Result.Success(expression)
+        return Result.Success(pos + 2 to out)
     }
 
 } 

@@ -14,61 +14,12 @@ open class FunctionToken(function: ClcFunction) : LinkedToken(function) {
 
 
     override fun isValid(argument: ValidationArgument): Boolean {
-        return validateFunction(argument.prev,argument.current as ClcFunction)
-    }
-
-
-    private fun validateFunction(prev: Component?, function: ClcFunction): Boolean {
+        val prev = argument.prev
         return when (prev) {
-            // Rule: Functions cannot appear after a constant
-            is Constant,
-                // Rule: Functions cannot appear after a decimal point
-            is Special.Decimal,
-                // Rule: Functions cannot appear after digits
-            is Digit,
-                // Rule: Functions cannot appear consecutively
-            is ClcFunction -> {
-                false
-            }
-            is Parenthesis -> {
-                // Delegate validation to the `validateFunction` for Parenthesis
-                validateFunction(prev, function)
-            }
-            is Operator -> {
-                // Delegate validation to the `validateFunction` for Operator
-                validateFunction(prev, function)
-            }
-            else -> {
-                // Default case: Invalid placement
-                false
-            }
-        }
-    }
-
-    private fun validateFunction(prev: Parenthesis?, function: ClcFunction): Boolean {
-        return when(prev){
-            // Rule : Functions can appear after open parenthesis
-            is Parenthesis.OpenParenthesis -> {
-                true
-            }
-            // Rule : Functions cannot appear after close parenthesis
-            else -> {
-                false
-            }
-        }
-    }
-
-    private fun validateFunction(prev: Operator?, function: ClcFunction) : Boolean {
-        return when(prev){
-            is Operator.Percent -> {
-                // Rule : Functions cannot appear after percentage operator
-                false
-            }
-
-            else -> {
-                // Rule : Functions can appear after any other operator like + - * /
-                true
-            }
+            is Special.Empty -> true
+            is Operator -> prev !is Operator.Percent
+            is Parenthesis.OpenParenthesis -> true
+            else -> false
         }
     }
 
@@ -265,11 +216,11 @@ open class FunctionToken(function: ClcFunction) : LinkedToken(function) {
     }
 
     fun isNaturalLogarithm() : Boolean {
-        return this is LogToken
+        return this is LnToken
     }
 
     fun isCommonLogarithm() : Boolean {
-        return this is LnToken
+        return this is LogToken
     }
 
 

@@ -4,13 +4,19 @@ import androidx.compose.ui.graphics.vector.EmptyPath
 import io.droidevs.calculatorplus.domain.components.ClcFunction
 import io.droidevs.calculatorplus.domain.components.toToken
 import io.droidevs.calculatorplus.domain.model.Calculation
+import io.droidevs.calculatorplus.domain.result.fold
 import io.droidevs.calculatorplus.domain.services.EvaluatorService
 import io.droidevs.calculatorplus.domain.services.ExpressionDisplayFormatter
 import io.droidevs.calculatorplus.domain.services.TokenizerFormatterService
+import io.droidevs.calculatorplus.domain.token.ConstantToken
 import io.droidevs.calculatorplus.domain.token.LinkedToken
 import io.droidevs.calculatorplus.domain.token.OperatorToken
 import io.droidevs.calculatorplus.domain.token.ParenthesisToken
 import io.droidevs.calculatorplus.domain.token.SpecialToken
+import io.droidevs.calculatorplus.domain.token.find
+import io.droidevs.calculatorplus.domain.token.getTokenAt
+import io.droidevs.calculatorplus.domain.token.headToken
+import io.droidevs.calculatorplus.domain.token.insertAt
 import io.droidevs.calculatorplus.domain.token.isCloseParenthesis
 import io.droidevs.calculatorplus.domain.token.isDigit
 import io.droidevs.calculatorplus.domain.token.isEmpty
@@ -29,122 +35,95 @@ class FunctionUseCase(
         private const val MAX_NESTED_FUNCTIONS = 5
     }
 
-    fun invoke(calculation: Calculation,function: ClcFunction, pos: Int): Calculation {
-        val formatted = tokenizerFormatter.format(calculation.expression)
-        val result = doInput(formatted,function, pos)
-        val bigDecimalResult = evaluator.evaluate(result)
-        return Calculation(
-            expression = displayFormatter.format(result).toString(),
-            result = bigDecimalResult,
+    fun invoke(calculation: Calculation,function: ClcFunction): Calculation{
+        val currentTokens = calculation.tokens.headToken()
+
+        val currentPair = displayFormatter.format(currentTokens)
+        val rawNow = currentPair.first.toString()
+        val formattedNow = currentPair.second.toString()
+        val rawPos = tokenizerFormatter.cursorFormattedToRaw(formattedNow, rawNow, calculation.pos)
+
+        val (adjustedPos, resultLinkedToken) = doInput(currentTokens, function, rawPos)
+
+        val expPair = displayFormatter.format(resultLinkedToken)
+        val rawExp = expPair.first.toString()
+        val formattedExp = expPair.second.toString()
+
+        val eval = evaluator.evaluate(resultLinkedToken)
+        return eval.fold(
+            onSuccess = { value ->
+                Calculation(
+                    tokens = resultLinkedToken.headToken(),
+                    expression = formattedExp,
+                    pos = displayFormatter.cursorRawToFormatted(rawExp, formattedExp, adjustedPos),
+                    result = value,
+                    error = null
+                )
+            },
+            onFailure = { error ->
+                calculation.copy(
+                    tokens = resultLinkedToken.headToken(),
+                    expression = formattedExp,
+                    pos = displayFormatter.cursorRawToFormatted(rawExp, formattedExp, adjustedPos),
+                    error = error
+                )
+            }
         )
     }
 
-    private fun doInput(expression: LinkedToken,function: ClcFunction, pos: Int): LinkedToken {
-        // Check for maximum nested functions
-        if (!willExceedNestingIfInsertFunction(expression, pos, MAX_NESTED_FUNCTIONS))
-            return expression
-        var current = expression
-        while (current.isNotEmpty()) {
-            if (pos == current.startIndex) {
-                val token = current
-                val prev = token.prev
-                val next = token.next
+    private fun doInput(
+        expression: LinkedToken,
+        function: ClcFunction,
+        pos: Int
+    ): Pair<Int, LinkedToken> {
+        val head = expression.headToken()
 
-                // If we're at the start, just add the function with parentheses
-                if (token.isEmpty()) {
-                    val functionToken = function.toToken()
-                    val openParenthesis = ParenthesisToken.OpenParenthesisToken()
-                    functionToken.prev = prev
-                    prev.next = functionToken
-                    openParenthesis.prev = functionToken
-                    functionToken.next = openParenthesis
-                    return functionToken
-                }
-                if (prev.isDigit() || prev.isCloseParenthesis()){
-                    val multiptyToken = OperatorToken.MultiplyToken()
-                    multiptyToken.prev = prev
-                    prev.next = multiptyToken
-                    val functionToken = function.toToken()
-                    val openParenthesis = ParenthesisToken.OpenParenthesisToken()
-                    functionToken.prev = multiptyToken
-                    multiptyToken.next = functionToken
-                    openParenthesis.prev = functionToken
-                    functionToken.next = openParenthesis
-                    token.prev = openParenthesis
-                    openParenthesis.next = token
-                    return expression
-                }
-                val functionToken = function.toToken()
-                val openParenthesis = ParenthesisToken.OpenParenthesisToken()
-                functionToken.prev = prev
-                prev.next = functionToken
-                openParenthesis.prev = functionToken
-                functionToken.next = openParenthesis
-                token.prev = openParenthesis
-                openParenthesis.next = token
-                return expression
-            }
-            if (pos in current.startIndex +1 .. current.endIndex) return expression
-            current = if (pos < current.startIndex) current.prev else current.next
+        // Check maximum nested functions (insertion adds +1 level at the cursor).
+        if (willExceedNestingIfInsertFunction(head, pos, MAX_NESTED_FUNCTIONS)) {
+            return pos to head
         }
-        val functionToken = function.toToken()
-        if (current.isNotEmpty()){
-            functionToken.prev = current
-            current.next = functionToken
+
+        // Don't allow insertion in the middle of an existing token.
+        if (head.find { pos in (it.startIndex + 1)..it.endIndex } != null) {
+            return pos to head
         }
-        val openParenthesis = ParenthesisToken.OpenParenthesisToken()
-        openParenthesis.prev = functionToken
-        functionToken.next = openParenthesis
-        return if (current.isEmpty()) functionToken else expression
+
+        val prev = head.find { it.endIndex == pos - 1 } ?: head.prev ?: SpecialToken.EmptyToken()
+
+        var adjustedPos = pos
+        var out: LinkedToken = head
+
+        // Implicit multiply when function follows a value.
+        if (prev.isDigit() || prev.isCloseParenthesis() || prev is ConstantToken) {
+            out = out.insertAt(adjustedPos, OperatorToken.MultiplyToken())
+            adjustedPos += 1
+        }
+
+        out = out.insertAt(adjustedPos, function.toToken())
+        adjustedPos += function.text.length
+
+        out = out.insertAt(adjustedPos, ParenthesisToken.OpenParenthesisToken())
+        adjustedPos += 1
+
+        return adjustedPos to out.headToken()
     }
 
     private fun willExceedNestingIfInsertFunction(startToken: LinkedToken, pos: Int, maxNested: Int): Boolean {
-        var top = 0
-        var temp = 0
-        var count = 0
-        var current : LinkedToken = startToken
-        while (current.isNotEmpty() && current.startIndex <= pos) {
-            if (current.isOpenParenthesis() && current.prev.isFunction()){
-                count++
-                temp++
-            }
-            if (current.isCloseParenthesis()){
-                count--
-                if (count == 0){
-                    top = max(top, temp)
-                    temp = 0
-                }
+        var depth = 0
+        var current: LinkedToken? = startToken.headToken()
+
+        // Count only function-parenthesis nesting: "fn(" increments, ")" decrements.
+        while (current != null && current.isNotEmpty() && current.endIndex < pos) {
+            if (current.isOpenParenthesis() && current.prev?.isFunction() == true) {
+                depth++
+            } else if (current.isCloseParenthesis() && depth > 0) {
+                depth--
             }
             current = current.next
         }
-        count++
-        temp++
 
-        while (current.isNotEmpty()) {
-            if (current.isOpenParenthesis() && current.prev.isFunction()){
-                count++
-                temp++
-            }
-            if (current.isCloseParenthesis()){
-                count--
-                if (count == 0){
-                    top = max(top, temp)
-                    temp = 0
-                }
-            }
-            current = current.next
-        }
-        return top < maxNested
+        // Inserting a new function adds one nesting level at the cursor.
+        return (depth + 1) > maxNested
     }
 
-}
-
-fun findTokenAtPositionLinked(start: LinkedToken, position: Int): LinkedToken {
-    var current = start
-    while (current.isNotEmpty()) {
-        if (position == current.startIndex) return current
-        if (position in current.startIndex +1 .. current.endIndex) return start
-        current = if (position < current.startIndex) current.prev else current.next
-    }
-    return current
 }

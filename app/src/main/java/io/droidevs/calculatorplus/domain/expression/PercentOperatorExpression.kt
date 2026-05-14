@@ -9,6 +9,6 @@ class PercentOperatorExpression(
 ): OperatorExpression(Operator.Percent) {
 
     override fun evaluate(): BigDecimal {
-        return expression.evaluate().divide(BigDecimal(100.0))
+        return expression.evaluate().divide(BigDecimal("100"), java.math.MathContext.DECIMAL64)
     }
 }

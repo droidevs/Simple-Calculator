@@ -2,6 +2,7 @@ package io.droidevs.calculatorplus.domain.token
 
 import androidx.annotation.CallSuper
 import io.droidevs.calculatorplus.domain.components.Component
+import io.droidevs.calculatorplus.domain.components.isE
 import io.droidevs.calculatorplus.domain.validation.ValidationArgument
 import io.droidevs.calculatorplus.domain.validation.ValidationResult
 
@@ -22,9 +23,7 @@ open class LinkedToken(var component: Component) {
      * of the associated component.
      */
     val length: Int
-        get() {
-            return component.text.length
-        }
+        get() = component.text.length
 
     /**
      * The starting index of this token in the expression.
@@ -42,68 +41,56 @@ open class LinkedToken(var component: Component) {
     /**
      * A reference to the next token in the linked structure.
      */
-    var next: LinkedToken = SpecialToken.EmptyToken()
+    var next: LinkedToken? = null
 
-    private fun refreshIndex(){
-        startIndex = prev?.let { it.endIndex + 1 }?: 0
-        next?.refreshIndex()
+    private fun refreshIndexForward() {
+        var current: LinkedToken = this
+        while (current.next?.isNotEmpty() == true) {
+            val n = current.next!!
+            n.startIndex = current.endIndex + 1
+            current = n
+        }
+        // Keep a trailing empty token (if present) aligned as well.
+        current.next?.startIndex = current.endIndex + 1
     }
+
     /**
      * A reference to the previous token in the linked structure.
      * Updating this value also recalculates the `startIndex` of the current token.
      */
-    var prev: LinkedToken = SpecialToken.EmptyToken()
+    var prev: LinkedToken? = null
         set(value) {
             field = value
-            if (value != null)
-                startIndex = value.endIndex + 1
-            else
-                startIndex = 0 // If there's no previous token, start at index 0
-            refreshIndex()
+            startIndex = if (value?.isNotEmpty() == true) value.endIndex + 1 else 0
+            refreshIndexForward()
         }
 
     /**
      * Validates that the starting index of this token is consistent with its position
      * in the linked structure.
-     *
-     * @return `true` if the starting index is valid; `false` otherwise.
      */
     private fun validateIndex(): Boolean {
-        return if (prev == null) {
+        val p = prev
+        return if (p?.isNotEmpty() != true) {
             startIndex == 0
         } else {
-            startIndex == prev!!.endIndex + 1
+            startIndex == p.endIndex + 1
         }
     }
 
     /**
-     * Validates this token and its linked successors using a `ValidatorService`.
-     *
-     * Validation ensures that:
-     * 1. The index alignment within the linked structure is correct.
-     * 2. The token adheres to rules defined by the `ValidatorService`.
-     * 3. All subsequent tokens in the chain are also valid.
-     *
-     * @param vs The `ValidatorService` instance used for validation.
-     * @return A `ValidationResult` indicating whether the token chain is valid.
+     * Validates this token and its linked successors.
      */
     @CallSuper
     final fun validate(): ValidationResult {
-        if (!validateIndex()) {
-            return ValidationResult.Invalid // Index misalignment
-        }
-        if (!isValid(ValidationArgument.of(this))) {
-            return ValidationResult.Invalid // Validation service check failed
-        }
-        next?.let {
-            return it.validate() // Recursively validate the next token
-        }
-        return ValidationResult.Valid // All tokens are valid
+        if (!validateIndex()) return ValidationResult.Invalid
+        if (!isValid(ValidationArgument.of(this))) return ValidationResult.Invalid
+
+        val n = next
+        return if (n != null && n.isNotEmpty()) n.validate() else ValidationResult.Valid
     }
 
-    open fun isValid(argument: ValidationArgument) : Boolean {
-        return true
-    }
+    open fun isValid(argument: ValidationArgument): Boolean = true
 
 }
 
@@ -152,7 +139,24 @@ fun LinkedToken.isCloseParenthesis(): Boolean = this is ParenthesisToken.ClosePa
 
 fun LinkedToken.isSpecial(): Boolean = this is SpecialToken
 
-fun LinkedToken.isEToken() : Boolean = this is SpecialToken.EToken
+fun LinkedToken.isEToken(): Boolean = this is ConstantToken && (this.component as io.droidevs.calculatorplus.domain.components.Constant).isE()
+
+fun LinkedToken.headToken(): LinkedToken {
+    var h = this
+    while (h.prev?.isNotEmpty() == true) h = h.prev!!
+    return h
+}
+
+fun LinkedToken.refreshIndicesFromThisAsHead() {
+    var current: LinkedToken = this
+    current.startIndex = 0
+    while (current.next?.isNotEmpty() == true) {
+        val n = current.next!!
+        n.startIndex = current.endIndex + 1
+        current = n
+    }
+    current.next?.startIndex = current.endIndex + 1
+}
 
 /**
  * Counts the number of tokens in the chain that match the given [predicate].
@@ -190,32 +194,38 @@ fun LinkedToken.getTokenAt(startIndex: Int): LinkedToken? {
 fun LinkedToken.insertAt(startIndex: Int, newToken: LinkedToken): LinkedToken {
     // If inserting before the very first token
     if (startIndex <= this.startIndex) {
+        val oldPrev = this.prev
         newToken.next = this
+        newToken.prev = oldPrev ?: SpecialToken.EmptyToken()
         this.prev = newToken
+        oldPrev?.next = newToken
         return newToken
     }
 
-    // Walk until we find the token that starts after our desired index
+    // Walk until we find the token that starts at/after our desired index
     var current: LinkedToken? = this
     while (current != null && current.isNotEmpty()) {
         if (current.startIndex >= startIndex) {
-            val prevToken = current.prev
+            val prevToken = current.prev ?: SpecialToken.EmptyToken()
             prevToken.next = newToken
-            newToken.prev = prevToken
             newToken.next = current
+            newToken.prev = prevToken
             current.prev = newToken
             return this
         }
         current = current.next
     }
 
-    // If we reach the end → append
+    // If we reach the end → append after the last non-empty token
     var tail: LinkedToken = this
-    while (tail.next.isNotEmpty()) {
-        tail = tail.next
+    while (tail.next?.isNotEmpty() == true) {
+        tail = tail.next!!
     }
+    val end = tail.next // may be an EmptyToken or null
     tail.next = newToken
+    newToken.next = end
     newToken.prev = tail
+    end?.prev = newToken
     return this
 }
 
@@ -227,13 +237,22 @@ fun LinkedToken.replaceAt(pos: Int, newToken: LinkedToken): LinkedToken {
     var current: LinkedToken? = this
     while (current != null && current.isNotEmpty()) {
         if (current.startIndex == pos) {
-            current.replaceWith(newToken)
-            // return head
-            return if (this.prev == null) this else {
-                var head = this
-                while (head.prev != null) head = head.prev!!
-                head
+            if (newToken.isNotEmpty()) {
+                current.replaceWith(newToken)
+            } else {
+                val prevToken = current.prev
+                val nextToken = current.next
+
+                if (prevToken == null && nextToken == null) {
+                    return SpecialToken.EmptyToken()
+                }
+
+                if (prevToken != null) prevToken.next = nextToken
+                if (nextToken != null) nextToken.prev = prevToken
             }
+
+            // return head
+            return this.headToken()
         }
         current = current.next
     }
@@ -247,11 +266,13 @@ fun LinkedToken.replaceWith(newToken: LinkedToken) {
     val prevToken = this.prev
     val nextToken = this.next
 
-    newToken.prev = prevToken
-    newToken.next = nextToken
+    if (newToken.isNotEmpty()) {
+        newToken.next = nextToken
+        newToken.prev = prevToken
 
-    prevToken?.next = newToken
-    nextToken?.prev = newToken
+        prevToken?.next = newToken
+        nextToken?.prev = newToken
+    }
 }
 
 

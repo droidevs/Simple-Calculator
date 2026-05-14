@@ -3,6 +3,7 @@ package io.droidevs.calculatorplus.domain.token
 import androidx.compose.runtime.currentComposer
 import io.droidevs.calculatorplus.domain.components.ClcFunction
 import io.droidevs.calculatorplus.domain.components.Component
+import io.droidevs.calculatorplus.domain.components.Constant
 import io.droidevs.calculatorplus.domain.components.Digit
 import io.droidevs.calculatorplus.domain.components.Operator
 import io.droidevs.calculatorplus.domain.components.Parenthesis
@@ -22,94 +23,24 @@ open class OperatorToken(operator: Operator) : LinkedToken(operator) {
 
 
     override fun isValid(argument: ValidationArgument): Boolean {
-        return validateOperator(argument.prev, argument.current as Operator)
-    }
+        val prev = argument.prev
+        val op = argument.current as Operator
 
-    private fun validateOperator(prev: Component?, operator: Operator): Boolean {
-        // Rule: If the operator is at the start of the expression
-        if (prev == null) {
-            return when (operator) {
-                // Rule: Minus operator is allowed at the start of the expression
-                is Operator.Minus -> {
-                    true
-                }
-                // Rule: Other operators are not allowed at the start
-                else -> {
-                    false
-                }
-            }
-        }
-
-        // Rule: Validate based on the type of preceding component
         return when (prev) {
-            // Rule 1: An operator can directly follow a digit
-            is Digit -> {
-                true
-            }
-            // Rule: An operator cannot follow a decimal point
-            is Special.Decimal -> {
-                false
-            }
-            // Rule: Two operators cannot appear consecutively
-            is Operator -> {
-                return  validateOperator(prev,operator)
-            }
-            // Rule: Operators cannot directly follow functions (e.g., "sin+")
-            is ClcFunction -> {
-                false
-            }
-            // Rule: Defer validation for operators following parentheses
-            is Parenthesis -> {
-                validateOperator(prev, operator)
-            }
-            // Rule: Any other cases result in invalid placement
-            else -> {
-                false
-            }
-        }
-    }
+            is Special.Empty -> op is Operator.Minus || op is Operator.Plus
 
-    private fun validateOperator(prev: Operator, operator: Operator): Boolean {
-        return when (prev) {
-            // Rule: If the previous operator is '%'
-            is Operator.Percent -> {
-                // Rule: Consecutive '%' operators are invalid
-                if (operator is Operator.Percent) {
-                    false
-                } else {
-                    // Any other operator after '%' is valid
-                    true
-                }
-            }
-            is Operator.Power -> {
-                if (operator is Operator.Plus || operator is Operator.Minus)
-                    true
-                else
-                    false
-            }
-            // All other cases are invalid
+            // unary + / - is allowed after an operator or an open parenthesis
+            is Operator -> op is Operator.Minus || op is Operator.Plus
+            is Parenthesis.OpenParenthesis -> op is Operator.Minus || op is Operator.Plus
+
+            is Digit,
+            is Constant,
+            is Parenthesis.CloseParenthesis -> true
+
+            is Special.Decimal,
+            is ClcFunction -> false
+
             else -> false
-        }
-    }
-
-    private fun validateOperator(prev: Parenthesis, operator: Operator): Boolean {
-        return when (prev) {
-            // Rule: An operator is valid after a closing parenthesis
-            is Parenthesis.CloseParenthesis -> {
-                true
-            }
-            else -> {
-                when (operator) {
-                    // Rule: A minus operator is valid in other cases
-                    is Operator.Minus -> {
-                        true
-                    }
-                    // All other operators are invalid in this context
-                    else -> {
-                        false
-                    }
-                }
-            }
         }
     }
 
@@ -211,6 +142,19 @@ open class OperatorToken(operator: Operator) : LinkedToken(operator) {
              */
             fun get(): PercentToken {
                 return PercentToken()
+            }
+        }
+    }
+
+    class FactorialToken : OperatorToken(Operator.Factorial) {
+        companion object {
+            /**
+             * Creates and returns a new instance of `FactorialToken`.
+             *
+             * @return A new `FactorialToken` instance.
+             */
+            fun get(): FactorialToken {
+                return FactorialToken()
             }
         }
     }

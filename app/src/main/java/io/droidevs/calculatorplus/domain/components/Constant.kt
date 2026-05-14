@@ -1,6 +1,6 @@
 package io.droidevs.calculatorplus.domain.components
 
-abstract class Constant(text : String) : Component(text = text) {
+sealed class Constant(text : String) : Component(text = text) {
 
     abstract fun apply() : Double
 

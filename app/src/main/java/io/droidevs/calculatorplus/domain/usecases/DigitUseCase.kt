@@ -3,17 +3,21 @@ package io.droidevs.calculatorplus.domain.usecases
 import io.droidevs.calculatorplus.domain.components.Digit
 import io.droidevs.calculatorplus.domain.components.toToken
 import io.droidevs.calculatorplus.domain.model.Calculation
+import io.droidevs.calculatorplus.domain.result.fold
 import io.droidevs.calculatorplus.domain.services.EvaluatorService
 import io.droidevs.calculatorplus.domain.services.ExpressionDisplayFormatter
 import io.droidevs.calculatorplus.domain.services.TokenizerFormatterService
 import io.droidevs.calculatorplus.domain.token.LinkedToken
 import io.droidevs.calculatorplus.domain.token.OperatorToken
+import io.droidevs.calculatorplus.domain.token.SpecialToken
+import io.droidevs.calculatorplus.domain.token.find
+import io.droidevs.calculatorplus.domain.token.getTokenAt
+import io.droidevs.calculatorplus.domain.token.headToken
+import io.droidevs.calculatorplus.domain.token.insertAt
 import io.droidevs.calculatorplus.domain.token.isCloseParenthesis
 import io.droidevs.calculatorplus.domain.token.isDecimal
 import io.droidevs.calculatorplus.domain.token.isDigit
 import io.droidevs.calculatorplus.domain.token.isEToken
-import io.droidevs.calculatorplus.domain.token.isEmpty
-import io.droidevs.calculatorplus.domain.token.isNotEmpty
 
 class DigitUseCase(
     private val tokenizerFormatter: TokenizerFormatterService,
@@ -24,85 +28,101 @@ class DigitUseCase(
         private const val MAX_NUMBER_LENGTH = 15
     }
 
-    operator fun invoke(calculation: Calculation, digit: Digit, pos: Int): Calculation {
-        val formatted = tokenizerFormatter.format(calculation.expression)
-        val result = doInput(expression = formatted,digit = digit, pos = pos)
-        val bigDecimalResult = evaluator.evaluate(result)
-        return Calculation(
-            expression = displayFormatter.format(result).toString(),
-            result = bigDecimalResult,
+    operator fun invoke(calculation: Calculation, digit: Digit): Calculation {
+        val currentTokens = calculation.tokens.headToken()
+
+        // Cursor mapping must be done using the *current* raw vs formatted expression.
+        val currentPair = displayFormatter.format(currentTokens)
+        val rawNow = currentPair.first.toString()
+        val formattedNow = currentPair.second.toString()
+        val rawPos = tokenizerFormatter.cursorFormattedToRaw(formattedNow, rawNow, calculation.pos)
+
+        val (newRawPos, newTokens) = doInput(currentTokens, digit, rawPos)
+
+        val expPair = displayFormatter.format(newTokens)
+        val rawExp = expPair.first.toString()
+        val formattedExp = expPair.second.toString()
+
+        val eval = evaluator.evaluate(newTokens)
+        return eval.fold(
+            onSuccess = { value ->
+                Calculation(
+                    tokens = newTokens.headToken(),
+                    expression = formattedExp,
+                    pos = displayFormatter.cursorRawToFormatted(rawExp, formattedExp, newRawPos),
+                    result = value,
+                    error = null
+                )
+            },
+            onFailure = { error ->
+                calculation.copy(
+                    tokens = newTokens.headToken(),
+                    expression = formattedExp,
+                    pos = displayFormatter.cursorRawToFormatted(rawExp, formattedExp, newRawPos),
+                    error = error
+                )
+            }
         )
     }
 
-    private fun doInput(expression: LinkedToken,digit: Digit, pos: Int): LinkedToken {
-        if (expression.isEmpty()) {
-            return digit.toToken()
+    private fun doInput(expression: LinkedToken, digit: Digit, pos: Int): Pair<Int, LinkedToken> {
+        val head = expression.headToken()
+
+        // Don't allow insertion in the middle of an existing token.
+        if (head.find { pos in (it.startIndex + 1)..it.endIndex } != null) {
+            return pos to head
         }
 
-        var current : LinkedToken = expression
-        while(current.isNotEmpty()) {
-            if (pos == current.startIndex) {
-                val prev = current.prev
+        // Determine the token immediately before the cursor.
+        val prev = head.find { it.endIndex == pos - 1 } ?: head.prev ?: SpecialToken.EmptyToken()
 
-                if (current.isDigit() || current.isDecimal() || current.isEmpty()){
-                    if (prev.isDigit() || prev.isDecimal() || prev.isEmpty()){
-                        if (getCurrentNumberLength(current) >= MAX_NUMBER_LENGTH)
-                            return expression
-                        else {
-                            val digitToken = digit.toToken()
-                            digitToken.prev = prev
-                            prev.next = digitToken
-                            current.prev = digitToken
-                            digitToken.next = current
-                            return expression
-                        }
-                    }
-                }
-
-                if (prev.isCloseParenthesis()){
-                    val multiplyToken = OperatorToken.MultiplyToken()
-                    multiplyToken.prev = prev
-                    prev.next = multiplyToken
-                    val digitToken = digit.toToken()
-                    digitToken.prev = multiplyToken
-                    multiplyToken.next = digitToken
-                    current.prev = digitToken
-                    digitToken.next = current
-                    return expression
-                }
-
-                if (prev.isEToken()){
-                    return expression
-                }
-                val digitToken = digit.toToken()
-                digitToken.prev = prev
-                prev.next = digitToken
-                current.prev = digitToken
-                digitToken.next = current
-                return expression
-            }
-            if (pos in current.startIndex+1..current.endIndex)
-                return expression
+        if (prev.isEToken()) {
+            return pos to head
         }
-        val digitToken = digit.toToken()
-        digitToken.prev = current
-        current.next = digitToken
-        return expression
+
+        var adjustedPos = pos
+        var result: LinkedToken = head
+
+        // Implicit multiply: ")" + digit => ")×digit"
+        if (prev.isCloseParenthesis()) {
+            result = result.insertAt(adjustedPos, OperatorToken.MultiplyToken())
+            adjustedPos += 1
+        }
+
+        // Enforce max digits within the number we are editing.
+        if (countDigitsInNumberAround(result, adjustedPos) >= MAX_NUMBER_LENGTH) {
+            return pos to head
+        }
+
+        result = result.insertAt(adjustedPos, digit.toToken())
+        adjustedPos += 1
+
+        return adjustedPos to result.headToken()
     }
 
-    private fun getCurrentNumberLength(token: LinkedToken): Int {
-        var length = 0
-        var current = if(token.isDigit()) token else token.prev
-        while (current.prev.isDigit()) {
-            length++
-            current = current.prev!!
+    private fun countDigitsInNumberAround(expression: LinkedToken, pos: Int): Int {
+        val head = expression.headToken()
+        val left = head.find { it.endIndex == pos - 1 }
+        val right = head.getTokenAt(pos)
+
+        val pivot = when {
+            left != null && (left.isDigit() || left.isDecimal()) -> left
+            right != null && (right.isDigit() || right.isDecimal()) -> right
+            else -> null
+        } ?: return 0
+
+        var start = pivot
+        while (start.prev?.let { it.isDigit() || it.isDecimal() } == true) {
+            start = start.prev!!
         }
-        current = token.next
-        while (current.isDigit()) {
-            length++
-            current = current.next
+
+        var count = 0
+        var cur: LinkedToken? = start
+        while (cur != null && (cur.isDigit() || cur.isDecimal())) {
+            if (cur.isDigit()) count++
+            cur = cur.next
         }
-        
-        return length
+
+        return count
     }
-} 
+}

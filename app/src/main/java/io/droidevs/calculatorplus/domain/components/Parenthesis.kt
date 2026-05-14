@@ -1,6 +1,6 @@
 package io.droidevs.calculatorplus.domain.components
 
-open class Parenthesis(text: String) : Special(text) {
+sealed class Parenthesis(text: String) : Special(text) {
 
 
     object OpenParenthesis : Parenthesis("(")

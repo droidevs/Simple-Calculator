@@ -77,4 +77,15 @@ dependencies {
     implementation("androidx.room:room-runtime:2.7.1")
     ksp("androidx.room:room-compiler:2.7.1")
     implementation("androidx.room:room-ktx:2.7.1")
+    testImplementation(kotlin("test"))
+
+    // JUnit 5 (Jupiter) for writing tests
+    testImplementation (libs.junit.jupiter.api)
+    testRuntimeOnly (libs.junit.jupiter.engine)
+
+    // Mockito for creating and managing mocks
+    testImplementation (libs.mockito.core)
+
+    // Mockito's Kotlin-specific extensions (optional, but recommended for Kotlin)
+    testImplementation (libs.mockito.kotlin)
 }

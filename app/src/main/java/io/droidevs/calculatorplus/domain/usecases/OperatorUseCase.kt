@@ -4,9 +4,9 @@ import io.droidevs.calculatorplus.domain.components.Operator
 import io.droidevs.calculatorplus.domain.components.isMinus
 import io.droidevs.calculatorplus.domain.components.toToken
 import io.droidevs.calculatorplus.domain.model.Calculation
-import io.droidevs.calculatorplus.domain.result.InvalidOperatorInPositionError
-import io.droidevs.calculatorplus.domain.result.InvalidPositionError
 import io.droidevs.calculatorplus.domain.result.Result
+import io.droidevs.calculatorplus.domain.result.errors.InvalidOperatorInPositionError
+import io.droidevs.calculatorplus.domain.result.errors.InvalidPositionError
 import io.droidevs.calculatorplus.domain.result.fold
 import io.droidevs.calculatorplus.domain.services.EvaluatorService
 import io.droidevs.calculatorplus.domain.services.ExpressionDisplayFormatter
@@ -14,6 +14,7 @@ import io.droidevs.calculatorplus.domain.services.TokenizerFormatterService
 import io.droidevs.calculatorplus.domain.token.LinkedToken
 import io.droidevs.calculatorplus.domain.token.find
 import io.droidevs.calculatorplus.domain.token.getTokenAt
+import io.droidevs.calculatorplus.domain.token.headToken
 import io.droidevs.calculatorplus.domain.token.insertAt
 import io.droidevs.calculatorplus.domain.token.isEmpty
 import io.droidevs.calculatorplus.domain.token.isNotEmpty
@@ -27,14 +28,42 @@ class OperationUseCase(
     private val evaluator: EvaluatorService
 ) {
     fun invoke(calculation: Calculation,operator: Operator, pos: Int): Calculation {
-        val formatted = tokenizerFormatter.format(calculation.expression)
-        val result = doInput(formatted,operator, pos)
+        val currentTokens = calculation.tokens.headToken()
+
+        val currentPair = displayFormatter.format(currentTokens)
+        val rawNow = currentPair.first.toString()
+        val formattedNow = currentPair.second.toString()
+        val rawPos = tokenizerFormatter.cursorFormattedToRaw(formattedNow, rawNow, calculation.pos)
+
+        val result = doInput(currentTokens, operator, rawPos)
         result.fold(
-            onSuccess = { result ->
-                val bigDecimalResult = evaluator.evaluate(result)
-                return Calculation(
-                    expression = displayFormatter.format(result).toString(),
-                    result = bigDecimalResult
+            onSuccess = { resultPair ->
+                val adjustedPos = resultPair.first
+                val resultLinkedToken = resultPair.second
+
+                val expPair = displayFormatter.format(resultLinkedToken)
+                val rawExp = expPair.first.toString()
+                val formattedExp = expPair.second.toString()
+
+                val eval = evaluator.evaluate(resultLinkedToken)
+                return eval.fold(
+                    onSuccess = { value ->
+                        Calculation(
+                            tokens = resultLinkedToken.headToken(),
+                            expression = formattedExp,
+                            pos = displayFormatter.cursorRawToFormatted(rawExp, formattedExp, adjustedPos),
+                            result = value,
+                            error = null
+                        )
+                    },
+                    onFailure = { error ->
+                        calculation.copy(
+                            tokens = resultLinkedToken.headToken(),
+                            expression = formattedExp,
+                            pos = displayFormatter.cursorRawToFormatted(rawExp, formattedExp, adjustedPos),
+                            error = error
+                        )
+                    }
                 )
             },
             onFailure = { error ->
@@ -47,13 +76,13 @@ class OperationUseCase(
         expression: LinkedToken,
         operator: Operator,
         pos: Int
-    ): Result<LinkedToken> {
+    ): Result<Pair<Int, LinkedToken>> {
         // Case 0: empty expression
         if (expression.isEmpty()) {
             return if (operator.isMinus()) {
-                Result.Success(operator.toToken())
+                Result.Success(pos + operator.text.length to operator.toToken())
             } else {
-                Result.Success(expression)
+                Result.Success(pos to expression)
             }
         }
 
@@ -64,7 +93,7 @@ class OperationUseCase(
         val prev = current?.prev ?: run {
             // If inserting at the end, use the last token as prev
             var last: LinkedToken = expression
-            while (last.next.isNotEmpty()) last = last.next
+            while (last.next?.isNotEmpty() == true) last = last.next!!
             last
         }
 
@@ -81,16 +110,16 @@ class OperationUseCase(
 
         // Case 3: previous token is operator → replace it
         if (prev.isOperator()) {
-            return Result.Success(expression.replaceAt(prev.startIndex, operator.toToken()))
+            return Result.Success(pos to expression.replaceAt(prev.startIndex, operator.toToken()))
         }
 
         // Case 4: current token is operator → replace it
         if (current?.isOperator() == true) {
-            return Result.Success(expression.replaceAt(pos, operator.toToken()))
+            return Result.Success(pos to expression.replaceAt(pos, operator.toToken()))
         }
 
         // Case 5: default → insert operator at this position
-        return Result.Success(expression.insertAt(pos, operator.toToken()))
+        return Result.Success(pos + operator.text.length to expression.insertAt(pos, operator.toToken()))
     }
 
 } 

@@ -1,7 +1,7 @@
 package io.droidevs.calculatorplus.domain.components
 
 
-open class Component(val text : String) {
+sealed class Component(val text : String) {
 
     companion object {
         fun identify(char: Char): Component {
@@ -265,7 +265,7 @@ private fun Char.isParenthesisOpen(): Boolean {
 }
 
 private fun Char.isParenthesisClose(): Boolean {
-    return this == '('
+    return this == ')'
 }
 
 /**

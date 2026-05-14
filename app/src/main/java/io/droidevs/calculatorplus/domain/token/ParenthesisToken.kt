@@ -5,56 +5,23 @@ import io.droidevs.calculatorplus.domain.components.Component
 import io.droidevs.calculatorplus.domain.components.Digit
 import io.droidevs.calculatorplus.domain.components.Operator
 import io.droidevs.calculatorplus.domain.components.Parenthesis
+import io.droidevs.calculatorplus.domain.components.Special
 import io.droidevs.calculatorplus.domain.validation.ValidationArgument
 
 open class ParenthesisToken(parenthesis : Parenthesis) : LinkedToken(parenthesis) {
 
 
     override fun isValid(argument: ValidationArgument): Boolean {
-        return validateParenthesis(argument.prev,argument.current as Parenthesis)
-    }
+        val prev = argument.prev
+        val par = argument.current as Parenthesis
 
-    private fun validateParenthesis(prev: Component?, parenthesis: Parenthesis): Boolean {
-        // Rule 1: If there is no preceding component
-        if (prev == null) {
-            return if (parenthesis == Parenthesis.OpenParenthesis) {
-                true // Open parenthesis can be the first input
-            } else {
-                false // Close parenthesis cannot be the first input
-            }
-        }
-
-        return when (prev) {
-            // Rule 2: If the preceding component is a digit
-            is Digit -> {
-                if (parenthesis == Parenthesis.CloseParenthesis) {
-                    true // Close parenthesis is valid after a digit
-                } else {
-                    false // Open parenthesis is invalid after a digit
-                }
+        return when (par) {
+            is Parenthesis.OpenParenthesis -> {
+                prev is Special.Empty || prev is Operator || prev is Parenthesis.OpenParenthesis || prev is ClcFunction
             }
 
-            // Rule 3: If the preceding component is a function
-            is ClcFunction -> {
-                if (parenthesis == Parenthesis.OpenParenthesis) {
-                    true // Open parenthesis is valid after a function
-                } else {
-                    false // Close parenthesis is invalid after a function
-                }
-            }
-
-            // Rule 3 (continued): If the preceding component is an operator
-            is Operator -> {
-                if (parenthesis == Parenthesis.OpenParenthesis) {
-                    true // Open parenthesis is valid after an operator
-                } else {
-                    false // Close parenthesis is invalid after an operator
-                }
-            }
-
-            // Rule 4: Any other component makes the parenthesis invalid
-            else -> {
-                false
+            is Parenthesis.CloseParenthesis -> {
+                prev is Digit || prev is io.droidevs.calculatorplus.domain.components.Constant || prev is Parenthesis.CloseParenthesis
             }
         }
     }

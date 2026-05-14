@@ -2,16 +2,19 @@ package io.droidevs.calculatorplus.domain.services
 
 import io.droidevs.calculatorplus.domain.components.ClcFunction
 import io.droidevs.calculatorplus.domain.components.Component
+import io.droidevs.calculatorplus.domain.components.Constant
 import io.droidevs.calculatorplus.domain.components.Digit
 import io.droidevs.calculatorplus.domain.components.Operator
 import io.droidevs.calculatorplus.domain.components.Parenthesis
 import io.droidevs.calculatorplus.domain.components.Special
+import io.droidevs.calculatorplus.domain.token.ConstantToken
 import io.droidevs.calculatorplus.domain.token.DigitToken
 import io.droidevs.calculatorplus.domain.token.FunctionToken
 import io.droidevs.calculatorplus.domain.token.LinkedToken
 import io.droidevs.calculatorplus.domain.token.OperatorToken
 import io.droidevs.calculatorplus.domain.token.ParenthesisToken
 import io.droidevs.calculatorplus.domain.token.SpecialToken
+import io.droidevs.calculatorplus.domain.token.refreshIndicesFromThisAsHead
 
 class TokenizerFormatterService {
     fun format(expression: String): LinkedToken {
@@ -20,7 +23,7 @@ class TokenizerFormatterService {
     }
 
     private fun removeSeparators(text: String): String {
-        return text.replace(Special.Decimal.text, "")
+        return text.replace(",", "")
     }
 
     private fun provide(component: Component) : LinkedToken? {
@@ -35,28 +38,23 @@ class TokenizerFormatterService {
             is Digit.Seven -> DigitToken.SevenToken.get()
             is Digit.Eight -> DigitToken.EightToken.get()
             is Digit.Nine -> DigitToken.NineToken.get()
-            is ClcFunction.Cos -> FunctionToken.CosToken.get()
-            is ClcFunction.Sin -> FunctionToken.SinToken.get()
-            is ClcFunction.CosH -> FunctionToken.CosHToken.get()
-            is ClcFunction.SinH -> FunctionToken.SinHToken.get()
-            is ClcFunction.TanH -> FunctionToken.TanHToken.get()
-            is ClcFunction.ACos -> FunctionToken.ACosToken.get()
-            is ClcFunction.ASin -> FunctionToken.ASinToken.get()
-            is ClcFunction.ATan -> FunctionToken.ATanToken.get()
-            is ClcFunction.ACosH -> FunctionToken.ACosHToken.get()
-            is ClcFunction.ASinH -> FunctionToken.ASinHToken.get()
-            is ClcFunction.ATanH -> FunctionToken.ATanHToken.get()
-            is ClcFunction.Tan -> FunctionToken.TanToken.get()
-            is ClcFunction.Log -> FunctionToken.LogToken.get()
+
+            is Constant.PI, is Constant.E -> ConstantToken(component as Constant)
+
             is Operator.Plus -> OperatorToken.PlusToken.get()
             is Operator.Minus -> OperatorToken.MinusToken.get()
             is Operator.Multiply -> OperatorToken.MultiplyToken.get()
             is Operator.Divide -> OperatorToken.DivideToken.get()
             is Operator.Power -> OperatorToken.PowerToken.get()
             is Operator.Percent -> OperatorToken.PercentToken.get()
+
             is Parenthesis.OpenParenthesis -> ParenthesisToken.OpenParenthesisToken.get()
             is Parenthesis.CloseParenthesis -> ParenthesisToken.CloseParenthesisToken.get()
+
             is Special.Decimal -> SpecialToken.DecimalToken.get()
+
+            // NOTE: functions are multi-character ("sin"), so we can't reconstruct them from a plain String here.
+            // In this app the LinkedToken chain is the source of truth.
             else -> null
         }
     }
@@ -67,27 +65,56 @@ class TokenizerFormatterService {
      * @return A TokenProvider containing the head of the linked tokens.
      */
     private fun tokenize(expression: String): LinkedToken {
-        //todo : fix it
-        var head: LinkedToken = SpecialToken.EmptyToken()
-        var token: LinkedToken = SpecialToken.EmptyToken()
+        var head: LinkedToken? = null
+        var tail: LinkedToken? = null
 
         for (c in expression) {
             val component = Component.identify(c)
+            val newToken = provide(component) ?: continue
 
-            // Handle the current non-number component.
-            val newToken = provide(component)
-            if (newToken != null) {
-                if (head == SpecialToken.EmptyToken()) {
-                    head = newToken
-                    token = head
-                } else {
-                    token.next = newToken
-                    newToken.prev = token
-                    token = newToken
-                }
+            if (head == null) {
+                head = newToken
+                tail = newToken
+            } else {
+                tail!!.next = newToken
+                newToken.prev = tail
+                tail = newToken
             }
         }
 
-        return head
+        val result = head ?: SpecialToken.EmptyToken.get().apply { startIndex = 0 }
+
+        // Add empty sentinels at both ends so validation rules can treat them as Special.Empty.
+        if (head != null && tail != null) {
+            val emptyHead = SpecialToken.EmptyToken()
+            emptyHead.startIndex = 0
+            result.prev = emptyHead
+            emptyHead.next = result
+
+            val emptyTail = SpecialToken.EmptyToken()
+            tail.next = emptyTail
+            emptyTail.prev = tail
+        }
+
+        result.refreshIndicesFromThisAsHead()
+        return result
     }
+
+    /**
+     * Convert cursor position from formatted string (number separators ex 3,222,333) to raw string (no number separators).
+     */
+    fun cursorFormattedToRaw(formatted: String, raw: String, formattedCursor: Int): Int {
+        var rawIndex = 0
+        var fIndex = 0
+
+        while (fIndex < formattedCursor && rawIndex < raw.length) {
+            if (formatted[fIndex] == raw[rawIndex]) {
+                rawIndex++
+            }
+            fIndex++
+        }
+        return rawIndex
+    }
+
+
 }

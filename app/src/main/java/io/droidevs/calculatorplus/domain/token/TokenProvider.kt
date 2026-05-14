@@ -1,179 +1,225 @@
 package io.droidevs.calculatorplus.domain.token
 
 import io.droidevs.calculatorplus.domain.components.ClcFunction
-import io.droidevs.calculatorplus.domain.components.Component
-import io.droidevs.calculatorplus.domain.components.Digit
+import io.droidevs.calculatorplus.domain.components.Constant
 import io.droidevs.calculatorplus.domain.components.Operator
-import io.droidevs.calculatorplus.domain.components.Parenthesis
-import io.droidevs.calculatorplus.domain.components.Special
 import io.droidevs.calculatorplus.domain.expression.ArithmeticOperatorExpression
-import io.droidevs.calculatorplus.domain.expression.EmptyExpression
 import io.droidevs.calculatorplus.domain.expression.Expression
 import io.droidevs.calculatorplus.domain.expression.FunctionExpression
 import io.droidevs.calculatorplus.domain.expression.NumberExpression
 import io.droidevs.calculatorplus.domain.expression.PercentOperatorExpression
 import io.droidevs.calculatorplus.domain.expression.PowerOperatorExpression
-import kotlin.math.pow
+import io.droidevs.calculatorplus.domain.result.Result
+import io.droidevs.calculatorplus.domain.result.errors.InvalidExpressionFormat
+import io.droidevs.calculatorplus.domain.result.fold
+import java.math.BigDecimal
+import java.math.MathContext
 
 
-class TokenProvider(val token : LinkedToken) {
+class TokenProvider(private val token: LinkedToken) {
 
+    private var current: LinkedToken? = token
 
-    private var ptoken: LinkedToken = token
+    fun parse(): Result<Expression> {
+        val validation = token.validate()
+        if (validation.isInvalid()) return Result.Error(InvalidExpressionFormat())
 
-    /**
-     * Entry point to parse a list of tokens into an Expression.
-     */
-    fun parse(): Expression {
-        return parseExpression()
+        val expr = parseExpression()
+        return expr.fold(
+            onSuccess = {
+                if (current?.isNotEmpty() == true) Result.Error(InvalidExpressionFormat()) else Result.Success(it)
+            },
+            onFailure = { Result.Error(it) }
+        )
     }
 
-    /**
-     * Parses a full expression, handling addition and subtraction.
-     */
-    fun parseExpression(): Expression {
-        // todo : validate the tokens
-        var left = parseTerm()
+    private fun parseExpression(): Result<Expression> {
+        var leftRes = parseTerm()
+        if (leftRes is Result.Error) return leftRes
 
-        while (currentToken() == OperatorToken.PlusToken() || currentToken() == OperatorToken.MinusToken()) {
-            val operator = consumeToken()!!.component
-            val right = parseTerm()
-            left = ArithmeticOperatorExpression(operator as Operator, left, right)
+        var left = (leftRes as Result.Success).result
+
+        while (true) {
+            val op = currentOperator()
+            if (op !is Operator.Plus && op !is Operator.Minus) break
+
+            consume()
+            val rightRes = parseTerm()
+            if (rightRes is Result.Error) return rightRes
+
+            val right = (rightRes as Result.Success).result
+            left = ArithmeticOperatorExpression(op, left, right)
         }
 
-        return left
+        return Result.Success(left)
     }
 
-    /**
-     * Parses a term, handling multiplication, division, and percent operators.
-     */
-    private fun parseTerm(): Expression {
-        var left = parseFactor()
-        var currenttoken = currentToken()
-        while(currenttoken != null) {
-            when(currenttoken){
-                is OperatorToken.MultiplyToken,
-                is OperatorToken.DivideToken,
-                is OperatorToken.PercentToken -> {
-                    val operator = consumeToken().component
-                    left = when (operator) {
-                        Operator.Percent -> PercentOperatorExpression(left)
-                        else -> {
-                            val right = parseFactor()
-                            ArithmeticOperatorExpression(operator as Operator, left, right)
-                        }
-                    }
-                    currenttoken = currentToken()
-                }
-                else -> break
+    private fun parseTerm(): Result<Expression> {
+        var leftRes = parsePower()
+        if (leftRes is Result.Error) return leftRes
+
+        var left = (leftRes as Result.Success).result
+
+        while (true) {
+            val op = currentOperator()
+            if (op !is Operator.Multiply && op !is Operator.Divide) break
+
+            consume()
+            val rightRes = parsePower()
+            if (rightRes is Result.Error) return rightRes
+
+            val right = (rightRes as Result.Success).result
+            left = ArithmeticOperatorExpression(op, left, right)
+        }
+
+        return Result.Success(left)
+    }
+
+    private fun parsePower(): Result<Expression> {
+        val baseRes = parseUnary()
+        if (baseRes is Result.Error) return baseRes
+
+        val base = (baseRes as Result.Success).result
+        val op = currentOperator()
+
+        if (op is Operator.Power) {
+            consume()
+            val expRes = parsePower()
+            if (expRes is Result.Error) return expRes
+            val exp = (expRes as Result.Success).result
+            return Result.Success(PowerOperatorExpression(base, exp))
+        }
+
+        return Result.Success(base)
+    }
+
+    private fun parseUnary(): Result<Expression> {
+        val op = currentOperator()
+
+        return when (op) {
+            is Operator.Plus -> {
+                consume()
+                parseUnary()
             }
-        }
-        return left
-    }
 
-    /**
-     * Parses a factor, handling parentheses, numbers, variables, and functions.
-     */
-    private fun parseFactor(): Expression {
-        val current = currentToken()
-        when(current) {
-            is ParenthesisToken -> {
-                if (current.isOpenParenthesis()) {
-                    consumeToken() // Skip '('
-                    val innerExpression = parseExpression()
-                    if (!currentToken().isParenthesis()) {
-                        throw IllegalArgumentException("Expected closing parenthesis")
-                    }
-                    consumeToken() // Skip ')'
-                    return innerExpression
-                }
+            is Operator.Minus -> {
+                consume()
+                val innerRes = parseUnary()
+                if (innerRes is Result.Error) innerRes
                 else {
-                    return EmptyExpression()
+                    val inner = (innerRes as Result.Success).result
+                    Result.Success(
+                        ArithmeticOperatorExpression(
+                            Operator.Minus,
+                            NumberExpression(BigDecimal.ZERO),
+                            inner
+                        )
+                    )
                 }
             }
-            is DigitToken -> return parseNumber()
+
+            else -> parsePostfix()
+        }
+    }
+
+    private fun parsePostfix(): Result<Expression> {
+        val primaryRes = parsePrimary()
+        if (primaryRes is Result.Error) return primaryRes
+
+        var expr = (primaryRes as Result.Success).result
+
+        while (true) {
+            val op = currentOperator()
+            if (op !is Operator.Percent) break
+
+            consume()
+            expr = PercentOperatorExpression(expr)
+        }
+
+        return Result.Success(expr)
+    }
+
+    private fun parsePrimary(): Result<Expression> {
+        val t = current ?: return Result.Error(InvalidExpressionFormat())
+
+        return when (t) {
+            is ParenthesisToken.OpenParenthesisToken -> {
+                consume()
+                val inner = parseExpression()
+                if (inner is Result.Error) return inner
+
+                if (current !is ParenthesisToken.CloseParenthesisToken) return Result.Error(InvalidExpressionFormat())
+                consume()
+                inner
+            }
+
+            is DigitToken,
+            is SpecialToken.DecimalToken -> parseNumber()
+
+            is ConstantToken -> {
+                val constant = t.component as Constant
+                consume()
+                Result.Success(NumberExpression(BigDecimal.valueOf(constant.apply())))
+            }
+
             is FunctionToken -> {
-                val functionOrVariable = consumeToken().component
-                consumeToken()
-                if (currentToken().isParenthesis()) {
-                    consumeToken() // Skip '('
-                    val argument = parseExpression()
-                    consumeToken() // Skip ')'
-                    FunctionExpression(functionOrVariable as ClcFunction, argument)
-                } else {
-                    throw IllegalArgumentException("Expected closing parenthesis for function")
-                }
-            }
-            is OperatorToken.PowerToken -> {
-                consumeToken() // Skip '^'
-                val base = parseFactor()
-                val exponent = parseFactor()
-                return PowerOperatorExpression(base, exponent)
-            }
-            else -> {
+                val fn = t.component as ClcFunction
+                consume()
 
+                if (current !is ParenthesisToken.OpenParenthesisToken) return Result.Error(InvalidExpressionFormat())
+                consume()
+
+                val argRes = parseExpression()
+                if (argRes is Result.Error) return argRes
+
+                if (current !is ParenthesisToken.CloseParenthesisToken) return Result.Error(InvalidExpressionFormat())
+                consume()
+
+                Result.Success(FunctionExpression(fn, (argRes as Result.Success).result))
             }
+
+            else -> Result.Error(InvalidExpressionFormat())
         }
-
-        throw IllegalArgumentException("Unexpected token: $current")
     }
 
-    /**
-     * Parses a number (integer or decimal) into a NumberExpression.
-     */
-    private fun parseNumber(): NumberExpression {
-        val beforeDecimal = mutableListOf<Int>()
-        val afterDecimal = mutableListOf<Int>()
-        var passedDecimal = false
+    private fun parseNumber(): Result<Expression> {
+        val sb = StringBuilder()
+        var seenDecimal = false
 
-        while (currentToken() != null && (currentToken().isDigit() || currentToken().isDecimal())) {
-            when (val tokenText = consumeToken()!!.component.text) {
-                "." -> {
-                    if (passedDecimal) throw IllegalArgumentException("Invalid number format: multiple decimals")
-                    passedDecimal = true
-                }
-                else -> {
-                    if (!passedDecimal) beforeDecimal.add(tokenText.toInt())
-                    else afterDecimal.add(tokenText.toInt())
-                }
+        while (current?.isNotEmpty() == true && (current!!.isDigit() || current!!.isDecimal())) {
+            val text = current!!.component.text
+            if (text == ".") {
+                if (seenDecimal) return Result.Error(InvalidExpressionFormat())
+                seenDecimal = true
+                sb.append('.')
+            } else {
+                sb.append(text)
             }
+            consume()
         }
 
-        var result = 0.0
-        val beforeDecimalSize = beforeDecimal.size
-        for (i in beforeDecimal.indices) {
-            result += beforeDecimal[i] * 10.0.pow((beforeDecimalSize - 1 - i).toDouble())
-        }
+        val numText = sb.toString()
+        if (numText.isBlank() || numText == ".") return Result.Error(InvalidExpressionFormat())
 
-        for (i in afterDecimal.indices) {
-            result += afterDecimal[i] * 10.0.pow(-(i + 1).toDouble())
+        return try {
+            Result.Success(NumberExpression(BigDecimal(numText, MathContext.DECIMAL64)))
+        } catch (_: Throwable) {
+            Result.Error(InvalidExpressionFormat())
         }
-
-        return NumberExpression(result)
     }
 
-    /**
-     * Gets the current token.
-     */
-    private fun currentToken(): LinkedToken = ptoken
-
-
-    /**
-     * Consumes and returns the current token, advancing to the next one.
-     */
-    private fun consumeToken(): LinkedToken {
-        val current = ptoken
-        ptoken = ptoken.next!!
-        return current
+    private fun currentOperator(): Operator? {
+        val opToken = current as? OperatorToken ?: return null
+        return opToken.component as? Operator
     }
 
+    private fun consume(): LinkedToken {
+        val t = current ?: return SpecialToken.EmptyToken()
+        current = t.next
+        return t
+    }
 
     companion object {
-        fun construct(token: LinkedToken) : TokenProvider {
-            return TokenProvider(token)
-        }
+        fun construct(token: LinkedToken): TokenProvider = TokenProvider(token)
     }
-
-
-
 }

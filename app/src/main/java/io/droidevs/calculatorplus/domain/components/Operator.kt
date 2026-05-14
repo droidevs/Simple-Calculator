@@ -2,7 +2,7 @@ package io.droidevs.calculatorplus.domain.components
 
 import io.droidevs.calculatorplus.domain.token.OperatorToken
 
-abstract class Operator(text: String) : Component(text= text) {
+sealed class Operator(text: String) : Component(text= text) {
 
     companion object {
         fun getAll(): List<Operator> {

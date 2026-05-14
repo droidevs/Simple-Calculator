@@ -2,7 +2,7 @@ package io.droidevs.calculatorplus.domain.components
 
 import io.droidevs.calculatorplus.domain.token.DigitToken
 
-open class Digit(text: String) : Component(text) {
+sealed class Digit(text: String) : Component(text) {
 
     object Zero : Digit("0")
 
