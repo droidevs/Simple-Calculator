@@ -25,7 +25,7 @@ fun CalculatorButton(
     modifier: Modifier = Modifier,
     onClick: (Action) -> Unit
 ) {
-    BoxWithConstraints(modifier = modifier.padding(4.dp)) {
+    BoxWithConstraints(modifier = modifier.padding(1.dp)) {
         val density = LocalDensity.current
         val baseSize = minOf(maxWidth, maxHeight)
         val fontSize = with(density) { (baseSize * 0.42f).toSp() }

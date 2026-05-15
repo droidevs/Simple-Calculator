@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -14,7 +15,6 @@ import androidx.compose.ui.unit.dp
 import io.droidevs.calculatorplus.ui.action.ClearAction
 import io.droidevs.calculatorplus.ui.action.Action
 import io.droidevs.calculatorplus.ui.action.DecimalAction
-import io.droidevs.calculatorplus.ui.action.DeleteAction
 import io.droidevs.calculatorplus.ui.action.DigitAction
 import io.droidevs.calculatorplus.ui.action.EqualsAction
 import io.droidevs.calculatorplus.ui.action.OperatorAction
@@ -48,30 +48,38 @@ fun CompactCalculatorKeyboard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 row.forEach { button ->
-                    val buttonColor = when (button) {
-                        is EqualsAction -> operationButtonsColor
-                        is OperatorAction -> if (button == OperatorAction.Percent) topButtonsColor else operationButtonsColor
-                        is ClearAction, is DeleteAction, is ParenthesisAction -> topButtonsColor
-                        else -> mainButtonsColor
+                    if (button != null) {
+                        val buttonColor = when (button) {
+                            is EqualsAction -> operationButtonsColor
+                            is OperatorAction -> if (button == OperatorAction.Percent) topButtonsColor else operationButtonsColor
+                            is ClearAction, is ParenthesisAction -> topButtonsColor
+                            else -> mainButtonsColor
+                        }
+                        CalculatorButton(
+                            action = button,
+                            color = buttonColor,
+                            textColor = buttonTextColor,
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight(),
+                            onClick = onAction
+                        )
+                    } else {
+                        Spacer(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                        )
                     }
-                    CalculatorButton(
-                        action = button,
-                        color = buttonColor,
-                        textColor = buttonTextColor,
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight(),
-                        onClick = onAction
-                    )
                 }
             }
         }
     }
 }
 
-fun provideActions(): List<List<Action>> {
+fun provideActions(): List<List<Action?>> {
     return listOf(
-        listOf(ClearAction(), ParenthesisAction(), OperatorAction.Percent, DeleteAction()),
+        listOf(ClearAction(), ParenthesisAction(), OperatorAction.Percent, null),
         listOf(DigitAction.SevenAction, DigitAction.EightAction, DigitAction.NineAction, OperatorAction.Divide),
         listOf(DigitAction.FourAction, DigitAction.FiveAction, DigitAction.SixAction, OperatorAction.Multiply),
         listOf(DigitAction.OneAction, DigitAction.TwoAction, DigitAction.ThreeAction, OperatorAction.Minus),

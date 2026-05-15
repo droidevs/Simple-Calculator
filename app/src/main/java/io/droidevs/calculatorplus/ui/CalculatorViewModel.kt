@@ -32,6 +32,7 @@ import io.droidevs.calculatorplus.domain.usecases.ParenthesesUseCase
 import io.droidevs.calculatorplus.ui.action.Action
 import io.droidevs.calculatorplus.ui.action.ClearAction
 import io.droidevs.calculatorplus.ui.action.ConstantAction
+import io.droidevs.calculatorplus.ui.action.CursorPositionAction
 import io.droidevs.calculatorplus.ui.action.DecimalAction
 import io.droidevs.calculatorplus.ui.action.DeleteAction
 import io.droidevs.calculatorplus.ui.action.DigitAction
@@ -81,6 +82,7 @@ class CalculatorViewModel(
             is ClearAction -> clearAll()
             is FunctionAction -> handleFunctionAction(action)
             is ConstantAction -> update(insertConstant(action.toConstant()))
+            is CursorPositionAction -> updateCursor(action.position)
             is EqualsAction -> finalizeCalculation()
             else -> Unit
         }
@@ -243,6 +245,12 @@ class CalculatorViewModel(
                 )
             }
         )
+    }
+
+    private fun updateCursor(position: Int) {
+        val max = calculation.expression.length
+        calculation = calculation.copy(pos = position.coerceIn(0, max))
+        syncState()
     }
 }
 
