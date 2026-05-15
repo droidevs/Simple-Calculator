@@ -1,12 +1,10 @@
 package io.droidevs.calculatorplus.ui
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -35,48 +33,28 @@ fun CalculatorApp(
         AppDestinations.allDestinations.find { it.route == route }
     }
     val showTopBar = currentDestination != null && currentDestination != AppDestination.Splash
-    val showBottomBar = currentDestination?.showInBottomBar == true
 
     Scaffold(
         topBar = {
             if (showTopBar) {
+                val destination = currentDestination!!
                 TopAppBar(
-                    title = { Text(currentDestination?.title ?: stringResource(id = R.string.app_name)) },
+                    title = { Text(destination.title.ifBlank { stringResource(id = R.string.app_name) }) },
                     navigationIcon = {
-                        if (currentDestination?.showInBottomBar == false) {
+                        if (!destination.showInBottomBar) {
                             IconButton(onClick = { appState.navigateBack() }) {
-                                Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                             }
                         }
                     },
                     actions = {
-                        if (currentDestination == AppDestination.History && viewModel.history.isNotEmpty()) {
+                        if (destination == AppDestination.History && viewModel.history.isNotEmpty()) {
                             IconButton(onClick = viewModel::onClearHistory) {
                                 Icon(Icons.Default.Delete, contentDescription = "Clear history")
                             }
                         }
                     }
                 )
-            }
-        },
-        bottomBar = {
-            if (showBottomBar) {
-                NavigationBar {
-                    AppDestinations.bottomBarDestinations.forEach { destination ->
-                        val selected = currentDestination?.route == destination.route
-                        NavigationBarItem(
-                            selected = selected,
-                            onClick = { appState.navigateTo(destination) },
-                            icon = {
-                                val icon = if (selected) destination.selectedIcon else destination.unselectedIcon
-                                if (icon != null) {
-                                    Icon(icon, contentDescription = destination.title)
-                                }
-                            },
-                            label = { Text(destination.title) }
-                        )
-                    }
-                }
             }
         }
     ) { innerPadding ->

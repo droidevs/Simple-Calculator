@@ -40,11 +40,11 @@ fun LandscapeCalculatorKeyboard(
     ) {
         SideCalculatorKeyboard(
             onAction = onAction,
-            modifier = Modifier.weight(1.3f)
+            modifier = Modifier.weight(1f)
         )
         CompactCalculatorKeyboard(
             onAction = onAction,
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(1.5f)
         )
     }
 }

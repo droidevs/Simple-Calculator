@@ -24,7 +24,8 @@ fun NavGraphBuilder.appNavGraph(
     composable(AppDestination.Calculator.route) {
         CalculatorScreen(
             state = viewModel.state,
-            onAction = viewModel::onAction
+            onAction = viewModel::onAction,
+            onHistoryClick = { appState.navigateTo(AppDestination.History) }
         )
     }
     composable(AppDestination.History.route) {

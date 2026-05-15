@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Backspace
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -44,9 +45,13 @@ import io.droidevs.calculatorplus.ui.window.LocalWindow
 fun CalculatorScreen(
     state: CalculatorState,
     onAction: (Action) -> Unit,
+    onHistoryClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val keyboardController = LocalSoftwareKeyboardController.current
+    val layoutMode = LocalWindow.current.layoutMode
+    val displayWeight = if (layoutMode == LayoutMode.PHONE_PORTRAIT) 0.35f else 0.28f
+    val keyboardWeight = 1f - displayWeight
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -57,7 +62,7 @@ fun CalculatorScreen(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(0.35f),
+                .weight(displayWeight),
             verticalArrangement = Arrangement.Bottom
         ) {
             val displayExpression = state.expression
@@ -126,8 +131,15 @@ fun CalculatorScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(40.dp),
-            horizontalArrangement = Arrangement.End
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
+            IconButton(onClick = onHistoryClick) {
+                Icon(
+                    imageVector = Icons.Outlined.History,
+                    contentDescription = "History",
+                    tint = MaterialTheme.colorScheme.onSurface
+                )
+            }
             IconButton(onClick = { onAction(DeleteAction()) }) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.Backspace,
@@ -137,11 +149,10 @@ fun CalculatorScreen(
             }
         }
 
-        val layoutMode = LocalWindow.current.layoutMode
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(0.65f)
+                .weight(keyboardWeight)
         ) {
             if (layoutMode == LayoutMode.PHONE_PORTRAIT) {
                 CompactCalculatorKeyboard(

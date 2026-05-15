@@ -15,13 +15,21 @@ import io.droidevs.calculatorplus.domain.services.EvaluatorService
 import io.droidevs.calculatorplus.domain.services.ExpressionDisplayFormatter
 import io.droidevs.calculatorplus.domain.services.TokenizerFormatterService
 import io.droidevs.calculatorplus.domain.token.ConstantToken
+import io.droidevs.calculatorplus.domain.token.LinkedToken
 import io.droidevs.calculatorplus.domain.token.OperatorToken
+import io.droidevs.calculatorplus.domain.token.ParenthesisToken
 import io.droidevs.calculatorplus.domain.token.SpecialToken
 import io.droidevs.calculatorplus.domain.token.find
 import io.droidevs.calculatorplus.domain.token.headToken
 import io.droidevs.calculatorplus.domain.token.insertAt
 import io.droidevs.calculatorplus.domain.token.isCloseParenthesis
+import io.droidevs.calculatorplus.domain.token.isDecimal
 import io.droidevs.calculatorplus.domain.token.isDigit
+import io.droidevs.calculatorplus.domain.token.isEmpty
+import io.droidevs.calculatorplus.domain.token.isNotEmpty
+import io.droidevs.calculatorplus.domain.token.isOperator
+import io.droidevs.calculatorplus.domain.token.isOpenParenthesis
+import io.droidevs.calculatorplus.domain.token.refreshIndicesFromThisAsHead
 import io.droidevs.calculatorplus.domain.usecases.ClearUseCase
 import io.droidevs.calculatorplus.domain.usecases.DecimalUseCase
 import io.droidevs.calculatorplus.domain.usecases.DeleteUseCase
@@ -40,6 +48,7 @@ import io.droidevs.calculatorplus.ui.action.EqualsAction
 import io.droidevs.calculatorplus.ui.action.FunctionAction
 import io.droidevs.calculatorplus.ui.action.OperatorAction
 import io.droidevs.calculatorplus.ui.action.ParenthesisAction
+import io.droidevs.calculatorplus.ui.action.ToggleSignAction
 import io.droidevs.calculatorplus.ui.model.HistoryUi
 import io.droidevs.calculatorplus.ui.state.CalculatorState
 import java.math.BigDecimal
@@ -73,16 +82,15 @@ class CalculatorViewModel(
     fun onAction(action: Action) {
         when (action) {
             is DigitAction -> update(digit(calculation, action.toDigit()))
-            is OperatorAction -> action.toOperator()?.let {
-                update(operation.invoke(calculation, it, calculation.pos))
-            }
+            is OperatorAction -> update(operation.invoke(calculation, action.toOperator(), calculation.pos))
             is DecimalAction -> update(decimal.invoke(calculation, calculation.pos))
             is ParenthesisAction -> update(parenthesis.invoke(calculation, calculation.pos))
-            is DeleteAction -> update(delete.invoke(calculation, calculation.pos))
+            is DeleteAction -> update(deleteAtCursor())
             is ClearAction -> clearAll()
             is FunctionAction -> handleFunctionAction(action)
             is ConstantAction -> update(insertConstant(action.toConstant()))
             is CursorPositionAction -> updateCursor(action.position)
+            is ToggleSignAction -> update(toggleSign())
             is EqualsAction -> finalizeCalculation()
             else -> Unit
         }
@@ -91,7 +99,6 @@ class CalculatorViewModel(
     fun onHistoryItemClick(item: HistoryUi) {
         val tokens = tokenizerFormatter.format(item.expression)
         val expPair = displayFormatter.format(tokens)
-        val rawExp = expPair.first.toString()
         val formattedExp = expPair.second.toString()
         val eval = evaluator.evaluate(tokens)
         calculation = eval.fold(
@@ -131,7 +138,7 @@ class CalculatorViewModel(
             FunctionAction.Power -> update(operation.invoke(calculation, Operator.Power, calculation.pos))
             FunctionAction.PowerE -> update(applyPowerE())
             FunctionAction.OneDevideX -> update(applyReciprocal())
-            else -> action.toFunction()?.let { update(function.invoke(calculation, it)) }
+            else -> update(function.invoke(calculation, action.toFunction()))
         }
     }
 
@@ -157,6 +164,12 @@ class CalculatorViewModel(
 
     private fun update(newCalculation: Calculation) {
         calculation = newCalculation
+        syncState()
+    }
+
+    private fun updateCursor(position: Int) {
+        val max = calculation.expression.length
+        calculation = calculation.copy(pos = position.coerceIn(0, max))
         syncState()
     }
 
@@ -247,10 +260,126 @@ class CalculatorViewModel(
         )
     }
 
-    private fun updateCursor(position: Int) {
-        val max = calculation.expression.length
-        calculation = calculation.copy(pos = position.coerceIn(0, max))
-        syncState()
+    private fun deleteAtCursor(): Calculation {
+        val pos = if (calculation.pos == 0 && calculation.expression.isNotBlank()) {
+            calculation.expression.length
+        } else {
+            calculation.pos
+        }
+        return delete.invoke(calculation, pos)
+    }
+
+    private fun toggleSign(): Calculation {
+        val currentTokens = calculation.tokens.headToken()
+        if (currentTokens.isEmpty()) {
+            return operation.invoke(calculation, Operator.Minus, calculation.pos)
+        }
+
+        val currentPair = displayFormatter.format(currentTokens)
+        val rawNow = currentPair.first.toString()
+        val formattedNow = currentPair.second.toString()
+        val rawPos = tokenizerFormatter.cursorFormattedToRaw(formattedNow, rawNow, calculation.pos)
+
+        val pivot = findNumberPivot(currentTokens, rawPos)
+            ?: return operation.invoke(calculation, Operator.Minus, calculation.pos)
+
+        var start = pivot
+        while (start.prev != null && start.prev!!.isNotEmpty() && isNumberToken(start.prev!!)) {
+            start = start.prev!!
+        }
+
+        var end = pivot
+        while (end.next != null && end.next!!.isNotEmpty() && isNumberToken(end.next!!)) {
+            end = end.next!!
+        }
+
+        val beforeStart = start.prev
+        val afterEnd = end.next
+
+        val hasWrappedNegative = beforeStart is ParenthesisToken.OpenParenthesisToken &&
+            beforeStart.prev is OperatorToken.MinusToken &&
+            afterEnd is ParenthesisToken.CloseParenthesisToken
+
+        val hasLeadingMinus = beforeStart is OperatorToken.MinusToken &&
+            (beforeStart.prev == null || beforeStart.prev!!.isOperator() || beforeStart.prev!!.isOpenParenthesis() || beforeStart.prev!!.isEmpty())
+
+        var updated = currentTokens
+        val newRawPos: Int
+
+        when {
+            hasWrappedNegative -> {
+                val minusToken = beforeStart.prev as OperatorToken.MinusToken
+                removeToken(afterEnd)
+                removeToken(beforeStart)
+                updated = removeToken(minusToken)
+                newRawPos = (rawPos - 2).coerceAtLeast(0)
+            }
+
+            hasLeadingMinus -> {
+                updated = removeToken(beforeStart)
+                newRawPos = (rawPos - 1).coerceAtLeast(0)
+            }
+
+            else -> {
+                val shouldWrap = beforeStart != null &&
+                    (beforeStart.isDigit() || beforeStart is ConstantToken || beforeStart.isCloseParenthesis())
+
+                if (shouldWrap) {
+                    updated = updated.insertAt(end.endIndex + 1, ParenthesisToken.CloseParenthesisToken())
+                    updated = updated.insertAt(start.startIndex, OperatorToken.MinusToken())
+                    updated = updated.insertAt(start.startIndex, ParenthesisToken.OpenParenthesisToken())
+                    newRawPos = rawPos + 2
+                } else {
+                    updated = updated.insertAt(start.startIndex, OperatorToken.MinusToken())
+                    newRawPos = rawPos + 1
+                }
+            }
+        }
+
+        val head = updated.headToken().apply { refreshIndicesFromThisAsHead() }
+        val expPair = displayFormatter.format(head)
+        val rawExp = expPair.first.toString()
+        val formattedExp = expPair.second.toString()
+        val adjustedPos = newRawPos.coerceAtMost(rawExp.length)
+        val eval = evaluator.evaluate(head)
+        return eval.fold(
+            onSuccess = { value ->
+                Calculation(
+                    tokens = head,
+                    expression = formattedExp,
+                    pos = displayFormatter.cursorRawToFormatted(rawExp, formattedExp, adjustedPos),
+                    result = value,
+                    error = null
+                )
+            },
+            onFailure = { error ->
+                calculation.copy(
+                    tokens = head,
+                    expression = formattedExp,
+                    pos = displayFormatter.cursorRawToFormatted(rawExp, formattedExp, adjustedPos),
+                    error = error
+                )
+            }
+        )
+    }
+
+    private fun findNumberPivot(head: LinkedToken, rawPos: Int): LinkedToken? {
+        val inToken = head.find { rawPos in it.startIndex..it.endIndex }
+        if (inToken != null && isNumberToken(inToken)) return inToken
+        val prev = head.find { it.endIndex == rawPos - 1 }
+        return if (prev != null && isNumberToken(prev)) prev else null
+    }
+
+    private fun isNumberToken(token: LinkedToken): Boolean {
+        return token.isDigit() || token.isDecimal() || token is ConstantToken
+    }
+
+    private fun removeToken(token: LinkedToken): LinkedToken {
+        val prev = token.prev
+        val next = token.next
+        prev?.next = next
+        next?.prev = prev
+        return (next ?: prev ?: SpecialToken.EmptyToken()).headToken()
     }
 }
 
