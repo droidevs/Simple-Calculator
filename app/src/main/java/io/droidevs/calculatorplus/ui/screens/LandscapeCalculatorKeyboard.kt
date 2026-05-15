@@ -1,13 +1,13 @@
 package io.droidevs.calculatorplus.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -73,24 +73,46 @@ fun SideCalculatorKeyboard(
         ConstantAction.E
     )
 
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(4),
+    val rows = actions
+        .chunked(4)
+        .map { row ->
+            if (row.size < 4) row + List(4 - row.size) { null } else row
+        }
+
+    Column(
         modifier = modifier
             .fillMaxSize()
             .padding(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        items(actions.size) { index ->
-            val action = actions[index]
-            val (background, textColor) = actionColors(action)
-            CalculatorButton(
-                action = action,
-                color = background,
-                textColor = textColor,
-                modifier = Modifier.fillMaxWidth(),
-                onClick = onAction
-            )
+        rows.forEach { row ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(0.dp)
+            ) {
+                row.forEach { action ->
+                    if (action != null) {
+                        val (background, textColor) = actionColors(action)
+                        CalculatorButton(
+                            action = action,
+                            color = background,
+                            textColor = textColor,
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight(),
+                            onClick = onAction
+                        )
+                    } else {
+                        Spacer(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                        )
+                    }
+                }
+            }
         }
     }
 }

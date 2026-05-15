@@ -2,6 +2,7 @@ package io.droidevs.calculatorplus.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -30,12 +31,12 @@ fun CalculatorScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .padding(16.dp),
-        verticalArrangement = Arrangement.SpaceBetween
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f),
+                .weight(0.35f),
             verticalArrangement = Arrangement.Bottom
         ) {
             Text(
@@ -65,12 +66,22 @@ fun CalculatorScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
         val layoutMode = LocalWindow.current.layoutMode
-        if (layoutMode == LayoutMode.PHONE_PORTRAIT) {
-            CompactCalculatorKeyboard(onAction = onAction)
-        } else {
-            LandscapeCalculatorKeyboard(onAction = onAction)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(0.65f)
+        ) {
+            if (layoutMode == LayoutMode.PHONE_PORTRAIT) {
+                CompactCalculatorKeyboard(
+                    onAction = onAction,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                LandscapeCalculatorKeyboard(
+                    onAction = onAction
+                )
+            }
         }
     }
 }

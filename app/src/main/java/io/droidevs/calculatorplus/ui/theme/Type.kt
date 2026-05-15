@@ -2,22 +2,13 @@ package io.droidevs.calculatorplus.ui.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
-import io.droidevs.calculatorplus.R
 
+val titleFamily = FontFamily.SansSerif
 
-val titleFamily = FontFamily(
-    //Font(resId = R.font.aboreto_regular)
-)
-
-val fontFamily = FontFamily(
-    //Font(resId =  R.font.oxygen_regular, weight = FontWeight.Normal),
-    //Font(resId = R.font.oxygen_bold, weight = FontWeight.Bold),
-    //Font(resId = R.font.oxygen_light, weight = FontWeight.Light)
-)
+val fontFamily = FontFamily.SansSerif
 
 val AppTypography = Typography(
     displayLarge = TextStyle(
