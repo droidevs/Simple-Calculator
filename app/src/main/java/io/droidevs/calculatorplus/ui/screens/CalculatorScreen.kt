@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -62,6 +63,7 @@ fun CalculatorScreen(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .fillMaxHeight(displayWeight)
                 .weight(displayWeight),
             verticalArrangement = Arrangement.Bottom
         ) {
@@ -107,7 +109,7 @@ fun CalculatorScreen(
                     )
                 }
             )
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = state.result,
                 style = MaterialTheme.typography.headlineLarge,
@@ -130,7 +132,7 @@ fun CalculatorScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(40.dp),
+                .height(15.dp),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             IconButton(onClick = onHistoryClick) {
