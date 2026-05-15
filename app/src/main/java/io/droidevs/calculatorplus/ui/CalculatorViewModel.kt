@@ -82,7 +82,7 @@ class CalculatorViewModel(
     fun onAction(action: Action) {
         when (action) {
             is DigitAction -> update(digit(calculation, action.toDigit()))
-            is OperatorAction -> update(operation.invoke(calculation, action.toOperator(), calculation.pos))
+            is OperatorAction -> update(operation.invoke(calculation, action.toOperator()))
             is DecimalAction -> update(decimal.invoke(calculation, calculation.pos))
             is ParenthesisAction -> update(parenthesis.invoke(calculation, calculation.pos))
             is DeleteAction -> update(deleteAtCursor())
@@ -135,7 +135,7 @@ class CalculatorViewModel(
     private fun handleFunctionAction(action: FunctionAction) {
         when (action) {
             FunctionAction.Square -> update(applySquare())
-            FunctionAction.Power -> update(operation.invoke(calculation, Operator.Power, calculation.pos))
+            FunctionAction.Power -> update(operation.invoke(calculation, Operator.Power))
             FunctionAction.PowerE -> update(applyPowerE())
             FunctionAction.OneDevideX -> update(applyReciprocal())
             else -> update(function.invoke(calculation, action.toFunction()))
@@ -199,20 +199,20 @@ class CalculatorViewModel(
     }
 
     private fun applySquare(): Calculation {
-        val withPower = operation.invoke(calculation, Operator.Power, calculation.pos)
+        val withPower = operation.invoke(calculation, Operator.Power)
         return digit(withPower, Digit.Two)
     }
 
     private fun applyPowerE(): Calculation {
         var next = insertConstant(Constant.E)
-        next = operation.invoke(next, Operator.Power, next.pos)
+        next = operation.invoke(next, Operator.Power)
         next = parenthesis.invoke(next, next.pos)
         return next
     }
 
     private fun applyReciprocal(): Calculation {
         var next = digit(calculation, Digit.One)
-        next = operation.invoke(next, Operator.Divide, next.pos)
+        next = operation.invoke(next, Operator.Divide)
         next = parenthesis.invoke(next, next.pos)
         return next
     }
@@ -272,7 +272,7 @@ class CalculatorViewModel(
     private fun toggleSign(): Calculation {
         val currentTokens = calculation.tokens.headToken()
         if (currentTokens.isEmpty()) {
-            return operation.invoke(calculation, Operator.Minus, calculation.pos)
+            return operation.invoke(calculation, Operator.Minus)
         }
 
         val currentPair = displayFormatter.format(currentTokens)
@@ -281,7 +281,7 @@ class CalculatorViewModel(
         val rawPos = tokenizerFormatter.cursorFormattedToRaw(formattedNow, rawNow, calculation.pos)
 
         val pivot = findNumberPivot(currentTokens, rawPos)
-            ?: return operation.invoke(calculation, Operator.Minus, calculation.pos)
+            ?: return operation.invoke(calculation, Operator.Minus)
 
         var start = pivot
         while (start.prev != null && start.prev!!.isNotEmpty() && isNumberToken(start.prev!!)) {

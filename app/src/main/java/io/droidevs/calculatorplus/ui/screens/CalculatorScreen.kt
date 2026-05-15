@@ -50,14 +50,14 @@ fun CalculatorScreen(
 ) {
     val keyboardController = LocalSoftwareKeyboardController.current
     val layoutMode = LocalWindow.current.layoutMode
-    val displayWeight = if (layoutMode == LayoutMode.PHONE_PORTRAIT) 0.35f else 0.28f
+    val displayWeight = if (layoutMode == LayoutMode.PHONE_PORTRAIT) 0.35f else 0.10f
     val keyboardWeight = 1f - displayWeight
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(if (layoutMode == LayoutMode.PHONE_PORTRAIT) 12.dp else 8.dp)
     ) {
         Column(
             modifier = Modifier

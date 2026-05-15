@@ -29,7 +29,7 @@ import io.droidevs.calculatorplus.ui.action.FunctionAction
 import io.droidevs.calculatorplus.ui.action.OperatorAction
 import io.droidevs.calculatorplus.ui.action.ParenthesisAction
 import io.droidevs.calculatorplus.ui.component.CalculatorButton
-
+import io.droidevs.calculatorplus.ui.window.LocalWindow
 
 @Composable
 fun LandscapeCalculatorKeyboard(
@@ -55,6 +55,11 @@ fun SideCalculatorKeyboard(
     modifier: Modifier = Modifier
 ) {
     var showReverse by remember { mutableStateOf(false) }
+
+    val windowInfo = LocalWindow.current
+    val minDim = minOf(windowInfo.windowSize.widthDp, windowInfo.windowSize.heightDp)
+    val spacing = (minDim * 0.012f).coerceIn(6.dp, 16.dp)
+    val padding = (minDim * 0.016f).coerceIn(6.dp, 14.dp)
 
     val normalActions = listOf(
         FunctionAction.SquareRoot,
@@ -91,14 +96,13 @@ fun SideCalculatorKeyboard(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(0.dp),
-        verticalArrangement = Arrangement.spacedBy(0.dp)
+            .padding(padding),
+        verticalArrangement = Arrangement.spacedBy(spacing)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(40.dp)
-                .padding(horizontal = 8.dp),
+                .height(40.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -115,14 +119,14 @@ fun SideCalculatorKeyboard(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
-            verticalArrangement = Arrangement.spacedBy(0.dp)
+            verticalArrangement = Arrangement.spacedBy(spacing)
         ) {
             rows.forEach { row ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
-                    horizontalArrangement = Arrangement.spacedBy(0.dp)
+                    horizontalArrangement = Arrangement.spacedBy(spacing)
                 ) {
                     row.forEach { action ->
                         if (action != null) {

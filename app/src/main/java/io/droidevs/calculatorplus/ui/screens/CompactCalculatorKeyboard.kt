@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
@@ -20,6 +21,8 @@ import io.droidevs.calculatorplus.ui.action.OperatorAction
 import io.droidevs.calculatorplus.ui.action.ParenthesisAction
 import io.droidevs.calculatorplus.ui.action.ToggleSignAction
 import io.droidevs.calculatorplus.ui.component.CalculatorButton
+import io.droidevs.calculatorplus.ui.window.LayoutMode
+import io.droidevs.calculatorplus.ui.window.LocalWindow
 
 @Composable
 fun CompactCalculatorKeyboard(
@@ -33,20 +36,28 @@ fun CompactCalculatorKeyboard(
     val topButtonsColor = MaterialTheme.colorScheme.tertiaryContainer
     val topTextColor = MaterialTheme.colorScheme.onTertiaryContainer
 
+    val windowInfo = LocalWindow.current
+    val minDim = minOf(windowInfo.windowSize.widthDp, windowInfo.windowSize.heightDp)
+    val layoutMode = windowInfo.layoutMode
+    val maxSpacing = if (layoutMode == LayoutMode.PHONE_PORTRAIT) 10.dp else 14.dp
+    val maxPadding = if (layoutMode == LayoutMode.PHONE_PORTRAIT) 12.dp else 16.dp
+    val spacing = (minDim * 0.012f).coerceIn(4.dp, maxSpacing)
+    val padding = (minDim * 0.02f).coerceIn(8.dp, maxPadding)
+
     val rows = compactRows()
 
     Column(
         modifier = modifier
-            .fillMaxWidth()
-            .padding(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+            .fillMaxSize()
+            .padding(padding),
+        verticalArrangement = Arrangement.spacedBy(spacing)
     ) {
         rows.forEach { row ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(spacing)
             ) {
                 row.forEach { spec ->
                     if (spec.action != null) {
@@ -108,7 +119,7 @@ private fun compactRows(): List<List<ButtonSpec>> {
         ),
         listOf(
             ButtonSpec(ToggleSignAction()),
-            ButtonSpec(DigitAction.ZeroAction, weight = 2f),
+            ButtonSpec(DigitAction.ZeroAction),
             ButtonSpec(DecimalAction),
             ButtonSpec(EqualsAction)
         )

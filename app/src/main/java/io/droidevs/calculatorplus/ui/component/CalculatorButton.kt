@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.droidevs.calculatorplus.ui.action.Action
 
 @SuppressLint("UnusedBoxWithConstraintsScope")
@@ -29,6 +30,9 @@ fun CalculatorButton(
         val density = LocalDensity.current
         val baseSize = minOf(maxWidth, maxHeight)
         val fontSize = with(density) { (baseSize * 0.42f).toSp() }
+            .value
+            .coerceIn(10f, 16f)
+            .sp
 
         Button(
             onClick = {

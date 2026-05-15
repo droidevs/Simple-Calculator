@@ -27,7 +27,7 @@ class OperationUseCase(
     private val displayFormatter: ExpressionDisplayFormatter,
     private val evaluator: EvaluatorService
 ) {
-    fun invoke(calculation: Calculation,operator: Operator, pos: Int): Calculation {
+    fun invoke(calculation: Calculation,operator: Operator): Calculation {
         val currentTokens = calculation.tokens.headToken()
 
         val currentPair = displayFormatter.format(currentTokens)
