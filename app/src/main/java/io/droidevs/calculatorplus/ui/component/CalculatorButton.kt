@@ -23,35 +23,19 @@ fun CalculatorButton(
     action: Action,
     color: Color,
     textColor: Color,
-    onClick: (Action) -> Unit) {
+    modifier: Modifier = Modifier,
+    onClick: (Action) -> Unit
+) {
     Button(
         onClick = {
             onClick(action)
         },
         colors = ButtonDefaults.buttonColors(containerColor = color),
         shape = MaterialTheme.shapes.medium,
-        modifier = Modifier
+        modifier = modifier
             .padding(4.dp)
             .aspectRatio(1f) // Ensures square buttons
     ) {
-        Text(text = action.text, fontSize = 24.sp, color = MaterialTheme.colorScheme.onPrimary)
+        Text(text = action.text, fontSize = 24.sp, color = textColor)
     }
 }
-
-// Buttons Lists
-val calculatorButtons = listOf(
-    DigitAction.SevenAction, DigitAction.EightAction, DigitAction.NineAction, OperatorAction.Divide,
-    DigitAction.FourAction, DigitAction.FiveAction, DigitAction.SixAction, OperatorAction.Multiply,
-    DigitAction.OneAction, DigitAction.TwoAction, DigitAction.ThreeAction, OperatorAction.Minus,
-    DigitAction.ZeroAction, DecimalAction, EqualsAction , OperatorAction.Plus
-)
-
-val operators = listOf(
-    OperatorAction.Divide, OperatorAction.Multiply, OperatorAction.Minus, OperatorAction.Plus, EqualsAction
-)
-
-val functionButtons = listOf(
-    "AC", "±", "%", "√", "sin", "cos", "tan", "ln"
-)
-
-

@@ -1,4 +1,4 @@
-package io.droidevs.wallpaper.ui.theme
+package io.droidevs.calculatorplus.ui.theme
 
 import androidx.compose.ui.graphics.Color
 

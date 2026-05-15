@@ -2,17 +2,23 @@ package io.droidevs.calculatorplus.domain.usecases
 
 import io.droidevs.calculatorplus.domain.components.Special
 import io.droidevs.calculatorplus.domain.model.Calculation
+import io.droidevs.calculatorplus.domain.result.fold
 import io.droidevs.calculatorplus.domain.services.EvaluatorService
 import io.droidevs.calculatorplus.domain.services.ExpressionDisplayFormatter
 import io.droidevs.calculatorplus.domain.services.TokenizerFormatterService
 import io.droidevs.calculatorplus.domain.token.DigitToken
 import io.droidevs.calculatorplus.domain.token.LinkedToken
 import io.droidevs.calculatorplus.domain.token.OperatorToken
-import io.droidevs.calculatorplus.domain.token.ParenthesisToken
 import io.droidevs.calculatorplus.domain.token.SpecialToken
+import io.droidevs.calculatorplus.domain.token.find
+import io.droidevs.calculatorplus.domain.token.headToken
+import io.droidevs.calculatorplus.domain.token.insertAt
+import io.droidevs.calculatorplus.domain.token.isCloseParenthesis
+import io.droidevs.calculatorplus.domain.token.isDecimal
 import io.droidevs.calculatorplus.domain.token.isDigit
-import io.droidevs.calculatorplus.domain.token.isFunction
-import io.droidevs.calculatorplus.domain.token.isNotEmpty
+import io.droidevs.calculatorplus.domain.token.isEToken
+import io.droidevs.calculatorplus.domain.token.isEmpty
+import io.droidevs.calculatorplus.domain.token.isOpenParenthesis
 import io.droidevs.calculatorplus.domain.token.isOperator
 
 class DecimalUseCase(
@@ -21,125 +27,126 @@ class DecimalUseCase(
     private val evaluatorService: EvaluatorService
 ) {
     fun invoke(calculation: Calculation, pos: Int): Calculation {
-        val prepared = tokenizerFormatter.format(calculation.expression)
-        val newTokens = doInput(prepared, pos)
-        val result = evaluatorService.evaluate(newTokens)
-        return Calculation(
-            expression = displayFormatter.format(newTokens).toString(),
-            result = result,
+        val currentTokens = calculation.tokens.headToken()
+        val currentPair = displayFormatter.format(currentTokens)
+        val rawNow = currentPair.first.toString()
+        val formattedNow = currentPair.second.toString()
+        val rawPos = tokenizerFormatter.cursorFormattedToRaw(formattedNow, rawNow, pos)
+
+        val (adjustedPos, newTokens) = doInput(currentTokens, rawPos)
+        val expPair = displayFormatter.format(newTokens)
+        val rawExp = expPair.first.toString()
+        val formattedExp = expPair.second.toString()
+
+        val eval = evaluatorService.evaluate(newTokens)
+        return eval.fold(
+            onSuccess = { value ->
+                Calculation(
+                    tokens = newTokens.headToken(),
+                    expression = formattedExp,
+                    pos = displayFormatter.cursorRawToFormatted(rawExp, formattedExp, adjustedPos),
+                    result = value,
+                    error = null
+                )
+            },
+            onFailure = { error ->
+                calculation.copy(
+                    tokens = newTokens.headToken(),
+                    expression = formattedExp,
+                    pos = displayFormatter.cursorRawToFormatted(rawExp, formattedExp, adjustedPos),
+                    error = error
+                )
+            }
         )
     }
 
-    private fun doInput(expression: LinkedToken?, pos: Int): LinkedToken {
-        // Case 1: Empty expression or at start
-        if (expression == null){
+    private fun doInput(expression: LinkedToken, pos: Int): Pair<Int, LinkedToken> {
+        // Case 1: Empty expression
+        if (expression.isEmpty()) {
             val zero = DigitToken.ZeroToken()
             val decimal = SpecialToken.DecimalToken()
             zero.next = decimal
             decimal.prev = zero
-            return zero
+            return 2 to zero
         }
 
-        var current : LinkedToken = expression
-        while(current.isNotEmpty()){
-            if(pos == current.startIndex){
+        val head = expression.headToken()
 
-                val prev = current.prev
-                // Case 2: After an operator or opening parenthesis
-                if (prev.isOperator() || prev == ParenthesisToken.OpenParenthesisToken()) {
-                    val zero = DigitToken.ZeroToken()
-                    zero.prev = prev
-                    prev.next = zero
-                    val decimal = SpecialToken.DecimalToken()
-                    zero.next = decimal
-                    decimal.prev = zero
-                    decimal.next = current
-                    current.prev = decimal
-                    return expression
-                }
-                // Case 3: After a closing parenthesis
-                if (prev == ParenthesisToken.CloseParenthesisToken()) {
-                    val multiplication = OperatorToken.MultiplyToken()
-                    multiplication.prev = prev
-                    prev.next = multiplication
-                    val zero = DigitToken.ZeroToken()
-                    multiplication.next = zero
-                    zero.prev = multiplication
-                    val decimal = SpecialToken.DecimalToken()
-                    zero.next = decimal
-                    decimal.prev = zero
-                    decimal.next = current
-                    current.prev = decimal
-                    return expression
-                }
-                // Case 4: Check if we're in a number and if it already has a decimal point
-                if (isInNumberWithDecimal(prev)){
-                    return expression
-                }
-                // Case 5: After a number, just add decimal point
-                if (prev.isDigit()) {
-                    val decimal = SpecialToken.DecimalToken()
-                    decimal.prev = prev
-                    decimal.next = current
-                    current.prev = decimal
-                    return expression
-                }
-                if (prev == SpecialToken.EToken()){
-                    val zero = DigitToken.ZeroToken()
-                    val decimal = SpecialToken.DecimalToken()
-                    zero.next = decimal
-                    decimal.prev = zero
-                    return zero
-                }
-            }
-            if(pos in current.startIndex+1 .. current.endIndex){
-                return expression
-            }
-            current = current.next
+        // Don't allow insertion in the middle of an existing token.
+        if (head.find { pos in (it.startIndex + 1)..it.endIndex } != null) {
+            return pos to head
         }
-        return expression
+
+        // Determine the token immediately before the cursor.
+        val prev = head.find { it.endIndex == pos - 1 } ?: head.prev ?: SpecialToken.EmptyToken()
+
+        // If we're inside a number that already has a decimal (or we're in the exponent), do nothing.
+        if ((prev.isDigit() || prev.isDecimal()) && isInNumberWithDecimal(prev)) {
+            return pos to head
+        }
+
+        var adjustedPos = pos
+        var out: LinkedToken = head
+
+        // Case 2: after close parenthesis => implicit multiply then "0."
+        if (prev.isCloseParenthesis()) {
+            out = out.insertAt(adjustedPos, OperatorToken.MultiplyToken())
+            adjustedPos += 1
+            out = out.insertAt(adjustedPos, DigitToken.ZeroToken())
+            adjustedPos += 1
+            out = out.insertAt(adjustedPos, SpecialToken.DecimalToken())
+            adjustedPos += 1
+            return adjustedPos to out.headToken()
+        }
+
+        // Case 3: after operator/open paren/empty/E => insert "0."
+        if (prev.isOperator() || prev.isOpenParenthesis() || prev.isEmpty() || prev.isEToken()) {
+            out = out.insertAt(adjustedPos, DigitToken.ZeroToken())
+            adjustedPos += 1
+            out = out.insertAt(adjustedPos, SpecialToken.DecimalToken())
+            adjustedPos += 1
+            return adjustedPos to out.headToken()
+        }
+
+        // Case 4: after digit => insert just '.'
+        if (prev.isDigit()) {
+            out = out.insertAt(adjustedPos, SpecialToken.DecimalToken())
+            adjustedPos += 1
+            return adjustedPos to out.headToken()
+        }
+
+        return pos to head
     }
 
     private fun isAfterOperatorOrOpenParenthesis(token: LinkedToken): Boolean {
         val prev = token.prev
-        if (prev == null || prev == SpecialToken.EmptyToken()) return true
-        return prev.isOperator() || prev == ParenthesisToken.OpenParenthesisToken()
+        if (prev == null || prev.isEmpty()) return true
+        return prev.isOperator() || prev.isOpenParenthesis()
     }
 
     private fun isInNumberWithDecimal(token: LinkedToken): Boolean {
         var current: LinkedToken?
 
-        // Check backward for existing decimal or exponent
+        // Check backward for existing decimal or exponent.
         current = token
         while (current != null) {
             when {
-                current == SpecialToken.DecimalToken() -> {
-                    return true
-                }
-                current == SpecialToken.EToken() -> {
-                    // Can't have decimal after exponent
-                    return true
-                }
+                current.isDecimal() -> return true
+                current.isEToken() -> return true // can't add decimal in exponent
                 current.isDigit() -> { /* Continue */ }
-                else -> break // Exit at non-number character
+                else -> break
             }
             current = current.prev
         }
 
-        // Check forward for existing decimal or exponent
+        // Check forward for existing decimal or exponent.
         current = token
         while (current != null) {
             when {
-                current == SpecialToken.DecimalToken() -> {
-                    // Found decimal ahead - invalid
-                    return true
-                }
-                current == SpecialToken.EToken() -> {
-                    // If exponent ahead, decimal can only exist before exponent
-                    return false
-                }
+                current.isDecimal() -> return true
+                current.isEToken() -> return false // exponent ahead; decimal can exist before it
                 current.isDigit() -> { /* Continue */ }
-                else -> break // Exit at non-number character
+                else -> break
             }
             current = current.next
         }

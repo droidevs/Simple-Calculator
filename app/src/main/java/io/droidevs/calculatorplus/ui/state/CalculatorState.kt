@@ -1,12 +1,11 @@
 package io.droidevs.calculatorplus.ui.state
 
 import androidx.compose.runtime.Stable
-import java.math.BigDecimal
-
 
 @Stable
-class CalculatorState(
-    val cursorPosition: Int,
-    val expression: String,
-    val result: BigDecimal
+data class CalculatorState(
+    val expression: String = "",
+    val result: String = "0",
+    val cursorPosition: Int = 0,
+    val errorMessage: String? = null
 )

@@ -1,4 +1,4 @@
-package io.droidevs.bmicalc.ui.window
+package io.droidevs.calculatorplus.ui.window
 
 
 import androidx.compose.runtime.Composable

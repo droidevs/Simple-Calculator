@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "io.droidevs.calculatorplus"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "io.droidevs.calculatorplus"
@@ -61,6 +61,7 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    implementation("androidx.compose.material:material-icons-extended")
     implementation(libs.androidx.window)
     implementation(libs.androidx.navigation.common.android)
     implementation(libs.androidx.navigation.compose.android)
