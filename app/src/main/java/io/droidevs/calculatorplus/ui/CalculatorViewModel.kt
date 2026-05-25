@@ -1,15 +1,17 @@
 package io.droidevs.calculatorplus.ui
 
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import io.droidevs.calculatorplus.domain.components.ClcFunction
 import io.droidevs.calculatorplus.domain.components.Constant
 import io.droidevs.calculatorplus.domain.components.Digit
 import io.droidevs.calculatorplus.domain.components.Operator
+import io.droidevs.calculatorplus.domain.components.TrigMode
 import io.droidevs.calculatorplus.domain.model.Calculation
 import io.droidevs.calculatorplus.domain.result.errors.AppError
+import io.droidevs.calculatorplus.domain.result.errors.DivisionByZeroError
+import io.droidevs.calculatorplus.domain.result.errors.MathDomainError
 import io.droidevs.calculatorplus.domain.result.fold
 import io.droidevs.calculatorplus.domain.services.EvaluatorService
 import io.droidevs.calculatorplus.domain.services.ExpressionDisplayFormatter
@@ -27,8 +29,8 @@ import io.droidevs.calculatorplus.domain.token.isDecimal
 import io.droidevs.calculatorplus.domain.token.isDigit
 import io.droidevs.calculatorplus.domain.token.isEmpty
 import io.droidevs.calculatorplus.domain.token.isNotEmpty
-import io.droidevs.calculatorplus.domain.token.isOperator
 import io.droidevs.calculatorplus.domain.token.isOpenParenthesis
+import io.droidevs.calculatorplus.domain.token.isOperator
 import io.droidevs.calculatorplus.domain.token.refreshIndicesFromThisAsHead
 import io.droidevs.calculatorplus.domain.usecases.ClearUseCase
 import io.droidevs.calculatorplus.domain.usecases.DecimalUseCase
@@ -48,34 +50,89 @@ import io.droidevs.calculatorplus.ui.action.EqualsAction
 import io.droidevs.calculatorplus.ui.action.FunctionAction
 import io.droidevs.calculatorplus.ui.action.OperatorAction
 import io.droidevs.calculatorplus.ui.action.ParenthesisAction
+import io.droidevs.calculatorplus.ui.action.RadAction
+import io.droidevs.calculatorplus.ui.action.DegreeAction
 import io.droidevs.calculatorplus.ui.action.ToggleSignAction
 import io.droidevs.calculatorplus.ui.model.HistoryUi
 import io.droidevs.calculatorplus.ui.state.CalculatorState
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import java.math.BigDecimal
 import java.math.RoundingMode
 
+// BUG FIX #12: ViewModel now accepts SavedStateHandle for process-death survival.
+// In a Hilt-wired project this would be @HiltViewModel + @Inject constructor.
+// Without Hilt, use ViewModelProvider.Factory to supply the SavedStateHandle.
 class CalculatorViewModel(
+    private val savedStateHandle: SavedStateHandle = SavedStateHandle(),
     private val tokenizerFormatter: TokenizerFormatterService = TokenizerFormatterService(),
     private val displayFormatter: ExpressionDisplayFormatter = ExpressionDisplayFormatter(),
     private val evaluator: EvaluatorService = EvaluatorService(),
     private val clear: ClearUseCase = ClearUseCase(),
-    private val delete: DeleteUseCase = DeleteUseCase(tokenizerFormatter, displayFormatter, evaluator),
-    private val digit: DigitUseCase = DigitUseCase(tokenizerFormatter, displayFormatter, evaluator),
-    private val decimal: DecimalUseCase = DecimalUseCase(tokenizerFormatter, displayFormatter, evaluator),
-    private val parenthesis: ParenthesesUseCase = ParenthesesUseCase(tokenizerFormatter, displayFormatter, evaluator),
-    private val operation: OperationUseCase = OperationUseCase(tokenizerFormatter, displayFormatter, evaluator),
-    private val function: FunctionUseCase = FunctionUseCase(tokenizerFormatter, displayFormatter, evaluator),
+    private val delete: DeleteUseCase = DeleteUseCase(
+        TokenizerFormatterService(), ExpressionDisplayFormatter(), EvaluatorService()
+    ),
+    private val digit: DigitUseCase = DigitUseCase(
+        TokenizerFormatterService(), ExpressionDisplayFormatter(), EvaluatorService()
+    ),
+    private val decimal: DecimalUseCase = DecimalUseCase(
+        TokenizerFormatterService(), ExpressionDisplayFormatter(), EvaluatorService()
+    ),
+    private val parenthesis: ParenthesesUseCase = ParenthesesUseCase(
+        TokenizerFormatterService(), ExpressionDisplayFormatter(), EvaluatorService()
+    ),
+    private val operation: OperationUseCase = OperationUseCase(
+        TokenizerFormatterService(), ExpressionDisplayFormatter(), EvaluatorService()
+    ),
+    private val function: FunctionUseCase = FunctionUseCase(
+        TokenizerFormatterService(), ExpressionDisplayFormatter(), EvaluatorService()
+    ),
 ) : ViewModel() {
 
     private var calculation: Calculation = Calculation()
 
-    var state by mutableStateOf(CalculatorState())
-        private set
+    // BUG FIX #3: TrigMode state — persisted through process death via SavedStateHandle.
+    private var trigMode: TrigMode = savedStateHandle["trig_mode"] ?: TrigMode.RADIANS
 
-    var history by mutableStateOf(emptyList<HistoryUi>())
-        private set
+    // BUG FIX #14: Replace mutableStateOf with MutableStateFlow so state updates are
+    // lifecycle-aware and don't bypass the Compose snapshot system in background threads.
+    private val _state = MutableStateFlow(CalculatorState())
+    val state: StateFlow<CalculatorState> = _state.asStateFlow()
+
+    // BUG FIX #7: History backed by StateFlow. TODO: connect to Room HistoryDao.
+    private val _history = MutableStateFlow(emptyList<HistoryUi>())
+    val history: StateFlow<List<HistoryUi>> = _history.asStateFlow()
 
     init {
+        // BUG FIX #7: Restore expression from SavedStateHandle after process death.
+        val savedExpression: String? = savedStateHandle["expression"]
+        if (!savedExpression.isNullOrBlank()) {
+            val tokens = tokenizerFormatter.format(savedExpression)
+            val expPair = displayFormatter.format(tokens)
+            val formattedExp = expPair.second.toString()
+            val eval = evaluator.evaluate(tokens)
+            calculation = eval.fold(
+                onSuccess = { value ->
+                    Calculation(
+                        tokens = tokens.headToken(),
+                        expression = formattedExp,
+                        pos = formattedExp.length,
+                        result = value,
+                        error = null
+                    )
+                },
+                onFailure = { error ->
+                    Calculation(
+                        tokens = tokens.headToken(),
+                        expression = formattedExp,
+                        pos = formattedExp.length,
+                        error = error
+                    )
+                }
+            )
+        }
         syncState()
     }
 
@@ -92,6 +149,17 @@ class CalculatorViewModel(
             is CursorPositionAction -> updateCursor(action.position)
             is ToggleSignAction -> update(toggleSign())
             is EqualsAction -> finalizeCalculation()
+            // BUG FIX #3: Wire the RAD/DEG toggle actions
+            is RadAction -> {
+                trigMode = TrigMode.RADIANS
+                savedStateHandle["trig_mode"] = trigMode
+                syncState()
+            }
+            is DegreeAction -> {
+                trigMode = TrigMode.DEGREES
+                savedStateHandle["trig_mode"] = trigMode
+                syncState()
+            }
             else -> Unit
         }
     }
@@ -125,11 +193,11 @@ class CalculatorViewModel(
     }
 
     fun onHistoryItemDelete(item: HistoryUi) {
-        history = history.filterNot { it.timeStamp == item.timeStamp }
+        _history.update { it.filterNot { h -> h.timeStamp == item.timeStamp } }
     }
 
     fun onClearHistory() {
-        history = emptyList()
+        _history.update { emptyList() }
     }
 
     private fun handleFunctionAction(action: FunctionAction) {
@@ -145,25 +213,27 @@ class CalculatorViewModel(
     private fun clearAll() {
         clear.invoke()
         calculation = Calculation()
+        savedStateHandle["expression"] = ""
         syncState()
     }
 
     private fun finalizeCalculation() {
         if (calculation.expression.isNotBlank() && calculation.error == null) {
-            history = listOf(
-                HistoryUi(
-                    expression = calculation.expression,
-                    result = formatResult(calculation.result),
-                    timeStamp = System.currentTimeMillis(),
-                    isFavored = false
-                )
-            ) + history
+            val newItem = HistoryUi(
+                expression = calculation.expression,
+                result = formatResult(calculation.result),
+                timeStamp = System.currentTimeMillis(),
+                isFavored = false
+            )
+            _history.update { listOf(newItem) + it }
         }
         syncState()
     }
 
     private fun update(newCalculation: Calculation) {
         calculation = newCalculation
+        // BUG FIX #7: Persist expression on every update for process-death survival
+        savedStateHandle["expression"] = newCalculation.expression
         syncState()
     }
 
@@ -174,12 +244,16 @@ class CalculatorViewModel(
     }
 
     private fun syncState() {
-        state = CalculatorState(
-            expression = calculation.expression.ifBlank { "0" },
-            result = formatResult(calculation.result),
-            cursorPosition = calculation.pos,
-            errorMessage = errorMessage(calculation.error)
-        )
+        // BUG FIX #3: Include trigMode in the state so the UI can display RAD/DEG indicator
+        _state.update {
+            CalculatorState(
+                expression = calculation.expression.ifBlank { "0" },
+                result = formatResult(calculation.result),
+                cursorPosition = calculation.pos,
+                errorMessage = errorMessage(calculation.error),
+                trigMode = trigMode
+            )
+        }
     }
 
     private fun formatResult(value: BigDecimal): String {
@@ -191,11 +265,12 @@ class CalculatorViewModel(
         }
     }
 
-    private fun errorMessage(error: AppError?): String? {
-        return when (error) {
-            null -> null
-            else -> "Invalid expression"
-        }
+    // BUG FIX #2: Show specific messages for division-by-zero and domain errors
+    private fun errorMessage(error: AppError?): String? = when (error) {
+        null -> null
+        is DivisionByZeroError -> "Cannot divide by zero"
+        is MathDomainError -> error.message
+        else -> "Invalid expression"
     }
 
     private fun applySquare(): Calculation {
@@ -227,7 +302,9 @@ class CalculatorViewModel(
         var adjustedPos = rawPos
         var out = currentTokens
 
-        val prev = currentTokens.find { it.endIndex == rawPos - 1 } ?: currentTokens.prev ?: SpecialToken.EmptyToken()
+        val prev = currentTokens.find { it.endIndex == rawPos - 1 }
+            ?: currentTokens.prev
+            ?: SpecialToken.EmptyToken()
         if (prev.isDigit() || prev.isCloseParenthesis() || prev is ConstantToken) {
             out = out.insertAt(adjustedPos, OperatorToken.MultiplyToken())
             adjustedPos += 1
@@ -261,11 +338,12 @@ class CalculatorViewModel(
     }
 
     private fun deleteAtCursor(): Calculation {
-        val pos = if (calculation.pos == 0 && calculation.expression.isNotBlank()) {
-            calculation.expression.length
-        } else {
-            calculation.pos
-        }
+        // BUG FIX #15: Cursor at pos=0 on a non-empty expression means the user is at
+        // the START — delete should do nothing, not jump to the end and delete.
+        // Previous code: `if (pos == 0 && expression.isNotBlank()) use expression.length`
+        // This was wrong — it teleported the cursor to the end silently.
+        val pos = calculation.pos
+        if (pos == 0) return calculation  // nothing to delete to the left of position 0
         return delete.invoke(calculation, pos)
     }
 
@@ -297,11 +375,12 @@ class CalculatorViewModel(
         val afterEnd = end.next
 
         val hasWrappedNegative = beforeStart is ParenthesisToken.OpenParenthesisToken &&
-            beforeStart.prev is OperatorToken.MinusToken &&
-            afterEnd is ParenthesisToken.CloseParenthesisToken
+                beforeStart.prev is OperatorToken.MinusToken &&
+                afterEnd is ParenthesisToken.CloseParenthesisToken
 
         val hasLeadingMinus = beforeStart is OperatorToken.MinusToken &&
-            (beforeStart.prev == null || beforeStart.prev!!.isOperator() || beforeStart.prev!!.isOpenParenthesis() || beforeStart.prev!!.isEmpty())
+                (beforeStart.prev == null || beforeStart.prev!!.isOperator() ||
+                        beforeStart.prev!!.isOpenParenthesis() || beforeStart.prev!!.isEmpty())
 
         var updated = currentTokens
         val newRawPos: Int
@@ -314,15 +393,14 @@ class CalculatorViewModel(
                 updated = removeToken(minusToken)
                 newRawPos = (rawPos - 2).coerceAtLeast(0)
             }
-
             hasLeadingMinus -> {
                 updated = removeToken(beforeStart)
                 newRawPos = (rawPos - 1).coerceAtLeast(0)
             }
-
             else -> {
                 val shouldWrap = beforeStart != null &&
-                    (beforeStart.isDigit() || beforeStart is ConstantToken || beforeStart.isCloseParenthesis())
+                        (beforeStart.isDigit() || beforeStart is ConstantToken ||
+                                beforeStart.isCloseParenthesis())
 
                 if (shouldWrap) {
                     updated = updated.insertAt(end.endIndex + 1, ParenthesisToken.CloseParenthesisToken())
@@ -370,11 +448,11 @@ class CalculatorViewModel(
         return if (prev != null && isNumberToken(prev)) prev else null
     }
 
-    private fun isNumberToken(token: LinkedToken): Boolean {
-        return token.isDigit() || token.isDecimal() || token is ConstantToken
-    }
+    private fun isNumberToken(token: LinkedToken): Boolean =
+        token.isDigit() || token.isDecimal() || token is ConstantToken
 
-    private fun removeToken(token: LinkedToken): LinkedToken {
+    private fun removeToken(token: LinkedToken?): LinkedToken {
+        if (token == null) return calculation.tokens.headToken()
         val prev = token.prev
         val next = token.next
         prev?.next = next
