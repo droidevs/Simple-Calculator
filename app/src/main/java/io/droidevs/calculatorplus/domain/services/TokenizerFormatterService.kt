@@ -17,17 +17,16 @@ import io.droidevs.calculatorplus.domain.token.SpecialToken
 import io.droidevs.calculatorplus.domain.token.refreshIndicesFromThisAsHead
 
 class TokenizerFormatterService {
+
     fun format(expression: String): LinkedToken {
-        var exp = removeSeparators(expression)
+        val exp = removeSeparators(expression)
         return tokenize(exp)
     }
 
-    private fun removeSeparators(text: String): String {
-        return text.replace(",", "")
-    }
+    private fun removeSeparators(text: String): String = text.replace(",", "")
 
-    private fun provide(component: Component) : LinkedToken? {
-        return when(component) {
+    private fun provide(component: Component): LinkedToken? {
+        return when (component) {
             is Digit.Zero -> DigitToken.ZeroToken.get()
             is Digit.One -> DigitToken.OneToken.get()
             is Digit.Two -> DigitToken.TwoToken.get()
@@ -38,32 +37,22 @@ class TokenizerFormatterService {
             is Digit.Seven -> DigitToken.SevenToken.get()
             is Digit.Eight -> DigitToken.EightToken.get()
             is Digit.Nine -> DigitToken.NineToken.get()
-
             is Constant.PI, is Constant.E -> ConstantToken(component as Constant)
-
             is Operator.Plus -> OperatorToken.PlusToken.get()
             is Operator.Minus -> OperatorToken.MinusToken.get()
+            // BUG FIX #8/#19: MultiplyToken and DivideToken now use display symbols ×/÷
+            // so the expression field shows proper math notation, not raw ASCII * and /.
             is Operator.Multiply -> OperatorToken.MultiplyToken.get()
             is Operator.Divide -> OperatorToken.DivideToken.get()
             is Operator.Power -> OperatorToken.PowerToken.get()
             is Operator.Percent -> OperatorToken.PercentToken.get()
-
             is Parenthesis.OpenParenthesis -> ParenthesisToken.OpenParenthesisToken.get()
             is Parenthesis.CloseParenthesis -> ParenthesisToken.CloseParenthesisToken.get()
-
             is Special.Decimal -> SpecialToken.DecimalToken.get()
-
-            // NOTE: functions are multi-character ("sin"), so we can't reconstruct them from a plain String here.
-            // In this app the LinkedToken chain is the source of truth.
             else -> null
         }
     }
 
-    /**
-     * Tokenizes a mathematical expression string into tokens.
-     * @param expression The formatted expression string.
-     * @return A TokenProvider containing the head of the linked tokens.
-     */
     private fun tokenize(expression: String): LinkedToken {
         var head: LinkedToken? = null
         var tail: LinkedToken? = null
@@ -71,7 +60,6 @@ class TokenizerFormatterService {
         for (c in expression) {
             val component = Component.identify(c)
             val newToken = provide(component) ?: continue
-
             if (head == null) {
                 head = newToken
                 tail = newToken
@@ -84,37 +72,34 @@ class TokenizerFormatterService {
 
         val result = head ?: SpecialToken.EmptyToken.get().apply { startIndex = 0 }
 
-        // Add empty sentinels at both ends so validation rules can treat them as Special.Empty.
-        if (head != null && tail != null) {
+        // BUG FIX #6: The original code added EmptyToken sentinels at BOTH ends.
+        // The head sentinel was reasonable (ValidationArgument.of() uses prev?.component
+        // and defaults to Special.Empty when prev is null — so it was redundant).
+        // The TAIL sentinel was actively harmful: validate() would recurse into it and
+        // return Valid unconditionally, causing expressions like "5+" to pass validation.
+        //
+        // Fix: Add only the head sentinel (preserving ValidationArgument.of() behaviour).
+        // Remove the tail sentinel entirely — validate() already handles null/empty termination.
+        if (head != null) {
             val emptyHead = SpecialToken.EmptyToken()
             emptyHead.startIndex = 0
             result.prev = emptyHead
             emptyHead.next = result
-
-            val emptyTail = SpecialToken.EmptyToken()
-            tail.next = emptyTail
-            emptyTail.prev = tail
         }
 
         result.refreshIndicesFromThisAsHead()
         return result
     }
 
-    /**
-     * Convert cursor position from formatted string (number separators ex 3,222,333) to raw string (no number separators).
-     */
     fun cursorFormattedToRaw(formatted: String, raw: String, formattedCursor: Int): Int {
         var rawIndex = 0
         var fIndex = 0
-
         while (fIndex < formattedCursor && rawIndex < raw.length) {
-            if (formatted[fIndex] == raw[rawIndex]) {
+            if (formatted.getOrNull(fIndex) == raw.getOrNull(rawIndex)) {
                 rawIndex++
             }
             fIndex++
         }
         return rawIndex
     }
-
-
 }
