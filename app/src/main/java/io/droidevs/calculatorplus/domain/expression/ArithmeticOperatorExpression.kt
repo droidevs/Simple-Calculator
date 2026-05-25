@@ -11,15 +11,21 @@ class ArithmeticOperatorExpression(
 ) : OperatorExpression(operator) {
 
     override fun evaluate(): BigDecimal {
-        when(operator){
-            is Operator.Plus -> return leftExpression.evaluate().plus(rightExpression.evaluate())
-            is Operator.Minus -> return leftExpression.evaluate().minus(rightExpression.evaluate())
-            is Operator.Multiply -> return leftExpression.evaluate().multiply(rightExpression.evaluate())
-            is Operator.Divide -> return leftExpression.evaluate().divide(rightExpression.evaluate(), java.math.MathContext.DECIMAL64)
-            else -> {
-                throw IllegalArgumentException("Invalid arithmetic operator: $operator")
+        return when (operator) {
+            is Operator.Plus -> leftExpression.evaluate().plus(rightExpression.evaluate())
+            is Operator.Minus -> leftExpression.evaluate().minus(rightExpression.evaluate())
+            is Operator.Multiply -> leftExpression.evaluate().multiply(rightExpression.evaluate())
+            is Operator.Divide -> {
+                // BUG FIX #2: BigDecimal.divide() throws ArithmeticException when divisor is
+                // exactly zero, even with a MathContext. Guard explicitly so EvaluatorService
+                // can surface a user-friendly DivisionByZeroError instead of a crash.
+                val divisor = rightExpression.evaluate()
+                if (divisor.compareTo(BigDecimal.ZERO) == 0) {
+                    throw ArithmeticException("Division by zero")
+                }
+                leftExpression.evaluate().divide(divisor, java.math.MathContext.DECIMAL64)
             }
+            else -> throw IllegalArgumentException("Invalid arithmetic operator: $operator")
         }
     }
-
 }
