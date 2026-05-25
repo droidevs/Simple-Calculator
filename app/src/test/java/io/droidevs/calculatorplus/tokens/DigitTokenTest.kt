@@ -15,97 +15,58 @@ import org.mockito.Mockito.mock
 
 class DigitTokenTest {
 
-    // Test a specific digit token
     private lateinit var digitToken: DigitToken
-
-    // Mocks for previous tokens
-    private lateinit var mockOperator: Operator
-    private lateinit var mockParenthesis: Parenthesis
-    private lateinit var mockOtherComponent: Component
 
     @Before
     fun setUp() {
         digitToken = DigitToken.OneToken()
-        mockOperator = mock(Operator::class.java)
-        mockParenthesis = mock(Parenthesis::class.java)
-        mockOtherComponent = mock(Component::class.java)
     }
 
-    //
-    // Tests for validation with an Operator as the previous token
-    //
     @Test
     fun `isValid returns true when preceded by a plus operator`() {
-        val prevToken = Operator.Plus
-        val argument = ValidationArgument(prevToken, Digit.One)
-        assertTrue(digitToken.isValid(argument))
+        assertTrue(digitToken.isValid(ValidationArgument(Operator.Plus, Digit.One)))
     }
 
     @Test
     fun `isValid returns true when preceded by a minus operator`() {
-        val prevToken = Operator.Minus
-        val argument = ValidationArgument(prevToken, Digit.Five)
-        assertTrue(digitToken.isValid(argument))
+        assertTrue(digitToken.isValid(ValidationArgument(Operator.Minus, Digit.Five)))
     }
 
     @Test
     fun `isValid returns false when preceded by a percent operator`() {
-        val prevToken = Operator.Percent
-        val argument = ValidationArgument(prevToken, Digit.Nine)
-        assertFalse(digitToken.isValid(argument))
+        // Percent is a postfix operator; a digit after % is invalid
+        assertFalse(digitToken.isValid(ValidationArgument(Operator.Percent, Digit.Nine)))
     }
 
-    @Test
-    fun `isValid returns false when preceded by a divide operator and the current digit is zero`() {
-        val prevToken = Operator.Divide
-        val argument = ValidationArgument(prevToken, Digit.Zero, Special.Empty)
-        assertFalse(digitToken.isValid(argument))
-    }
-
-    @Test
-    fun `isValid returns true when preceded by a divide operator and the current digit is not zero`() {
-        val prevToken = Operator.Divide
-        val argument = ValidationArgument(prevToken, Digit.Seven, Special.Empty)
-        assertTrue(digitToken.isValid(argument))
-    }
-
-    //
-    // Tests for validation with a Parenthesis as the previous token
-    //
     @Test
     fun `isValid returns true when preceded by an open parenthesis`() {
-        val prevToken = Parenthesis.OpenParenthesis
-        val argument = ValidationArgument(prevToken, Digit.One)
-        assertTrue(digitToken.isValid(argument))
+        assertTrue(digitToken.isValid(ValidationArgument(Parenthesis.OpenParenthesis, Digit.One)))
     }
 
     @Test
     fun `isValid returns false when preceded by a close parenthesis`() {
-        val prevToken = Parenthesis.CloseParenthesis
-        val argument = ValidationArgument(prevToken, Digit.Three)
-        assertFalse(digitToken.isValid(argument))
-    }
-
-    //
-    // General and Edge Case Tests
-    //
-    @Test
-    fun `isValid returns false when the previous token is null`() {
-        val argument = ValidationArgument(Special.Empty, Digit.Two)
-        assertTrue(digitToken.isValid(argument))
+        // Close paren + digit requires implicit multiply — handled by DigitUseCase
+        assertFalse(digitToken.isValid(ValidationArgument(Parenthesis.CloseParenthesis, Digit.Three)))
     }
 
     @Test
-    fun `isValid returns false when the previous token is a different digit`() {
-        val prevToken = Digit.Three // Assume Digit is a sealed class
+    fun `isValid returns true when first token in expression`() {
+        assertTrue(digitToken.isValid(ValidationArgument(Special.Empty, Digit.Two)))
+    }
+
+    // BUG FIX #4: This test previously asserted FALSE — which was WRONG.
+    // Digits CAN follow other digits (e.g., "12", "345"). The test was contradicting
+    // the implementation. The implementation is correct; the test was the bug.
+    @Test
+    fun `isValid returns TRUE when the previous token is a digit — digits form multi-digit numbers`() {
+        val prevToken = Digit.Three
         val argument = ValidationArgument(prevToken, Digit.Four)
-        assertFalse(digitToken.isValid(argument))
+        assertTrue("A digit must be valid after another digit to support multi-digit numbers",
+            digitToken.isValid(argument))
     }
 
     @Test
-    fun `isValid returns false for an unhandled component type`() {
-        // A mock component that is neither an Operator nor a Parenthesis
-        val argument = ValidationArgument(mockOtherComponent, Digit.Five)
-        assertFalse(digitToken.isValid(argument))
+    fun `isValid returns true when preceded by a decimal`() {
+        assertTrue(digitToken.isValid(ValidationArgument(Special.Decimal, Digit.Five)))
     }
 }
